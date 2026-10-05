@@ -42,6 +42,30 @@ class BaseMemoryEngine {
         return { ok: true };
     }
     /**
+     * Session lifecycle alias (draft session to permanent thread)
+     */
+    async aliasSession(sessionParams) {
+        return { ok: true };
+    }
+    /**
+     * Directly add a single memory
+     */
+    async addMemory(memory) {
+        throw new Error('BaseMemoryEngine.addMemory() must be implemented by subclass');
+    }
+    /**
+     * Update an existing memory by ID
+     */
+    async updateMemory(id, updates) {
+        throw new Error('BaseMemoryEngine.updateMemory() must be implemented by subclass');
+    }
+    /**
+     * Delete an existing memory by ID
+     */
+    async deleteMemory(id) {
+        throw new Error('BaseMemoryEngine.deleteMemory() must be implemented by subclass');
+    }
+    /**
      * Returns web dashboard / management console URL for this engine.
      */
     getDashboardUrl() {

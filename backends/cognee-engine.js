@@ -314,6 +314,161 @@ class CogneeEngine extends BaseEngineClassForCognee {
         return { ok: true };
     }
     /**
+     * Adds a memory via POST /api/v1/add (fallback POST /add) and triggers background cognify.
+     */
+    async addMemory({ title = '', narrative = '', category = '', metadata = {} }) {
+        try {
+            const payload = {
+                data: narrative,
+                text: narrative,
+                datasetName: this.datasetName || 'main',
+                metadata: {
+                    title: title || '',
+                    category: category || '',
+                    source: 'manual_popup',
+                    timestamp: new Date().toISOString(),
+                    ...metadata,
+                },
+            };
+            let url = this._resolveEndpoint('api/v1/add');
+            let res = await fetch(url, {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(this.timeout),
+            }).catch(() => null);
+            if (!res || (!res.ok && res.status === 404)) {
+                url = this._resolveEndpoint('add');
+                const fallbackRes = await fetch(url, {
+                    method: 'POST',
+                    headers: this._headers(),
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(this.timeout),
+                }).catch(() => null);
+                if (fallbackRes)
+                    res = fallbackRes;
+            }
+            if (!res) {
+                return { success: false, error: 'Failed to connect to Cognee endpoint' };
+            }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return {
+                    success: false,
+                    error: data.message || data.error || `Cognee returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            // Background cognify trigger if supported
+            try {
+                const cognifyUrl = this._resolveEndpoint('api/v1/cognify');
+                fetch(cognifyUrl, {
+                    method: 'POST',
+                    headers: this._headers(),
+                    body: JSON.stringify({ datasets: [this.datasetName || 'main'] }),
+                    signal: AbortSignal.timeout(2000),
+                }).catch(() => { });
+            }
+            catch {
+                // Ignore
+            }
+            return { success: true, id: String(data.id || data.memory_id || `cognee_${Date.now()}`) };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
+     * Updates a memory via PUT /api/v1/memories/:id (fallback PUT /memories/:id).
+     */
+    async updateMemory(id, updates) {
+        try {
+            const payload = {
+                id,
+                data: updates.narrative,
+                text: updates.narrative,
+                datasetName: this.datasetName || 'main',
+                metadata: {
+                    title: updates.title,
+                    category: updates.category,
+                    ...updates.metadata,
+                },
+            };
+            let url = `${this._resolveEndpoint('api/v1/memories')}/${encodeURIComponent(id)}`;
+            let res = await fetch(url, {
+                method: 'PUT',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(this.timeout),
+            }).catch(() => null);
+            if (!res || (!res.ok && res.status === 404)) {
+                url = `${this._resolveEndpoint('memories')}/${encodeURIComponent(id)}`;
+                const fallbackRes = await fetch(url, {
+                    method: 'PUT',
+                    headers: this._headers(),
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(this.timeout),
+                }).catch(() => null);
+                if (fallbackRes)
+                    res = fallbackRes;
+            }
+            if (!res) {
+                return { success: false, error: 'Failed to connect to Cognee endpoint' };
+            }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return {
+                    success: false,
+                    error: data.message || data.error || `Cognee returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true, id };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
+     * Deletes a memory via DELETE /api/v1/memories/:id?datasetName=... (fallback DELETE /memories/:id?datasetName=...).
+     */
+    async deleteMemory(id) {
+        try {
+            const dsParam = encodeURIComponent(this.datasetName || 'main');
+            let url = `${this._resolveEndpoint('api/v1/memories')}/${encodeURIComponent(id)}?datasetName=${dsParam}`;
+            let res = await fetch(url, {
+                method: 'DELETE',
+                headers: this._headers(),
+                signal: AbortSignal.timeout(this.timeout),
+            }).catch(() => null);
+            if (!res || (!res.ok && res.status === 404)) {
+                url = `${this._resolveEndpoint('memories')}/${encodeURIComponent(id)}?datasetName=${dsParam}`;
+                const fallbackRes = await fetch(url, {
+                    method: 'DELETE',
+                    headers: this._headers(),
+                    signal: AbortSignal.timeout(this.timeout),
+                }).catch(() => null);
+                if (fallbackRes)
+                    res = fallbackRes;
+            }
+            if (!res) {
+                return { success: false, error: 'Failed to connect to Cognee endpoint' };
+            }
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                return {
+                    success: false,
+                    error: data.message || data.error || `Cognee returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
      * Returns dashboard URL
      */
     getDashboardUrl() {

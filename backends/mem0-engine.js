@@ -432,6 +432,200 @@ class Mem0Engine extends BaseEngineClassForMem0 {
         return { ok: true };
     }
     /**
+     * Adds a memory directly via Local Console POST /api/add or Cloud POST /memories.
+     */
+    async addMemory({ title = '', narrative = '', category = '', metadata = {} }) {
+        try {
+            const isLoopback = this.apiUrl.includes('127.0.0.1') || this.apiUrl.includes('localhost');
+            // Local console mode: POST /api/add
+            if ((this.isConsoleMode || isLoopback) && !this.apiKey) {
+                try {
+                    const localAddUrl = `${this.apiUrl.replace(/\/+$/, '')}/api/add`;
+                    const localRes = await fetch(localAddUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            content: narrative,
+                            category: category || 'manual_memory',
+                            project: title || 'manual_memory',
+                            concepts: category || '',
+                        }),
+                        signal: AbortSignal.timeout(this.timeout),
+                    });
+                    if (localRes.ok) {
+                        const data = await localRes.json().catch(() => ({}));
+                        const id = data.id || data.memory_id || (Array.isArray(data.results) ? data.results[0]?.id : undefined) || `mem0_${Date.now()}`;
+                        return { success: true, id: String(id) };
+                    }
+                }
+                catch {
+                    // Fall through to standard endpoint
+                }
+            }
+            // Standard / Cloud Mem0 POST /memories
+            const payload = {
+                messages: [{ role: 'user', content: narrative }],
+                user_id: this.userId,
+                metadata: {
+                    title: title || '',
+                    category: category || 'manual_memory',
+                    source: 'manual_popup',
+                    timestamp: new Date().toISOString(),
+                    ...metadata,
+                },
+            };
+            if (this.orgId)
+                payload.org_id = this.orgId;
+            if (this.projectId)
+                payload.project_id = this.projectId;
+            const url = this._resolveEndpoint('memories');
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(this.timeout),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return {
+                    success: false,
+                    error: data.message || data.error || `Mem0 returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            const id = Array.isArray(data)
+                ? (data[0]?.id || data[0]?.memory_id)
+                : (data.id || data.memory_id || (Array.isArray(data.results) ? data.results[0]?.id : undefined) || `mem0_${Date.now()}`);
+            return { success: true, id: String(id) };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
+     * Updates an existing memory via Local Console (PUT /api/memories/:id or POST /api/update) or Cloud (PUT /memories/:id).
+     */
+    async updateMemory(id, updates) {
+        try {
+            const isLoopback = this.apiUrl.includes('127.0.0.1') || this.apiUrl.includes('localhost');
+            // Local console mode
+            if ((this.isConsoleMode || isLoopback) && !this.apiKey) {
+                try {
+                    const localUpdateUrl = `${this.apiUrl.replace(/\/+$/, '')}/api/update`;
+                    const localRes = await fetch(localUpdateUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id,
+                            content: updates.narrative,
+                            title: updates.title,
+                            category: updates.category,
+                        }),
+                        signal: AbortSignal.timeout(this.timeout),
+                    });
+                    if (localRes.ok)
+                        return { success: true, id };
+                    const localPutUrl = `${this.apiUrl.replace(/\/+$/, '')}/api/memories/${encodeURIComponent(id)}`;
+                    const putRes = await fetch(localPutUrl, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            content: updates.narrative,
+                            title: updates.title,
+                            category: updates.category,
+                        }),
+                        signal: AbortSignal.timeout(this.timeout),
+                    });
+                    if (putRes.ok)
+                        return { success: true, id };
+                }
+                catch {
+                    // Fall through
+                }
+            }
+            // Standard / Cloud Mem0 PUT /memories/:id
+            const url = `${this._resolveEndpoint('memories')}/${encodeURIComponent(id)}`;
+            const payload = {
+                text: updates.narrative,
+                metadata: {
+                    title: updates.title,
+                    category: updates.category,
+                    ...updates.metadata,
+                },
+            };
+            const res = await fetch(url, {
+                method: 'PUT',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(this.timeout),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                return {
+                    success: false,
+                    error: data.message || data.error || `Mem0 returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true, id };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
+     * Deletes a memory via Local Console (DELETE /api/memories/:id or POST /api/delete) or Cloud (DELETE /memories/:id).
+     */
+    async deleteMemory(id) {
+        try {
+            const isLoopback = this.apiUrl.includes('127.0.0.1') || this.apiUrl.includes('localhost');
+            // Local console mode
+            if ((this.isConsoleMode || isLoopback) && !this.apiKey) {
+                try {
+                    const localDelUrl = `${this.apiUrl.replace(/\/+$/, '')}/api/delete`;
+                    const localRes = await fetch(localDelUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id }),
+                        signal: AbortSignal.timeout(this.timeout),
+                    });
+                    if (localRes.ok)
+                        return { success: true };
+                    const localDeleteUrl = `${this.apiUrl.replace(/\/+$/, '')}/api/memories/${encodeURIComponent(id)}`;
+                    const delRes = await fetch(localDeleteUrl, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(this.timeout),
+                    });
+                    if (delRes.ok)
+                        return { success: true };
+                }
+                catch {
+                    // Fall through
+                }
+            }
+            // Standard / Cloud Mem0 DELETE /memories/:id
+            const url = `${this._resolveEndpoint('memories')}/${encodeURIComponent(id)}`;
+            const res = await fetch(url, {
+                method: 'DELETE',
+                headers: this._headers(),
+                signal: AbortSignal.timeout(this.timeout),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                return {
+                    success: false,
+                    error: data.message || data.error || `Mem0 returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
      * Returns web dashboard URL
      */
     getDashboardUrl() {

@@ -236,6 +236,94 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
           return;
         }
 
+        // -- Session alias: route migration from draft to thread --
+        case 'SESSION_ALIAS': {
+          const { oldSessionId, newSessionId, platform, threadId, url } = message;
+          if (!oldSessionId || !newSessionId || oldSessionId === newSessionId) {
+            sendResponse({ success: false, error: 'Invalid alias session identifiers' });
+            return;
+          }
+
+          let archiveResult: any = null;
+          if (typeof LocalArchive !== 'undefined' && typeof (LocalArchive as any).aliasSession === 'function') {
+            try {
+              archiveResult = await (LocalArchive as any).aliasSession({
+                oldSessionId,
+                newSessionId,
+                platform,
+              });
+            } catch (archiveErr) {
+              console.warn('LocalArchive.aliasSession failed:', archiveErr);
+            }
+          }
+
+          // Notify active engine if aliasSession is supported
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings) as any;
+          if (typeof engine.aliasSession === 'function') {
+            try {
+              await engine.aliasSession({ oldSessionId, newSessionId, platform, threadId, url });
+            } catch (engineErr) {
+              console.warn('engine.aliasSession failed:', engineErr);
+            }
+          }
+
+          sendResponse({
+            success: true,
+            oldSessionId,
+            newSessionId,
+            turnCount: archiveResult?.turnCount,
+          });
+          return;
+        }
+
+        // -- Memory CRUD --
+        case 'ADD_MEMORY': {
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings) as any;
+          if (typeof engine.addMemory === 'function') {
+            const res = await engine.addMemory({
+              title: message.title,
+              narrative: message.narrative,
+              category: message.category,
+              metadata: message.metadata,
+            });
+            sendResponse(res);
+          } else {
+            sendResponse({ success: false, error: 'addMemory not supported by active engine' });
+          }
+          return;
+        }
+
+        case 'UPDATE_MEMORY': {
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings) as any;
+          if (typeof engine.updateMemory === 'function') {
+            const res = await engine.updateMemory(message.id, {
+              title: message.title,
+              narrative: message.narrative,
+              category: message.category,
+              metadata: message.metadata,
+            });
+            sendResponse(res);
+          } else {
+            sendResponse({ success: false, error: 'updateMemory not supported by active engine' });
+          }
+          return;
+        }
+
+        case 'DELETE_MEMORY': {
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings) as any;
+          if (typeof engine.deleteMemory === 'function') {
+            const res = await engine.deleteMemory(message.id);
+            sendResponse(res);
+          } else {
+            sendResponse({ success: false, error: 'deleteMemory not supported by active engine' });
+          }
+          return;
+        }
+
         // -- Status: health check for popup --
         case 'STATUS': {
           const settings = await getSettings();

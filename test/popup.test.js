@@ -103,10 +103,12 @@ class MockElement {
   }
 
   dispatchEvent(event) {
-    const type = typeof event === 'string' ? event : event.type;
-    const fns = this.listeners[type] || [];
+    const evt = typeof event === 'string' ? { type: event } : event;
+    if (typeof evt.stopPropagation !== 'function') evt.stopPropagation = () => {};
+    if (typeof evt.preventDefault !== 'function') evt.preventDefault = () => {};
+    const fns = this.listeners[evt.type] || [];
     for (const fn of fns) {
-      fn(event);
+      fn(evt);
     }
   }
 
@@ -207,6 +209,7 @@ function setupMockPopupHarness(initialSettings = {}, statusResponse = { connecte
   const doc = createMockDocument();
 
   // Create UI elements matching popup.html
+  const expandTabBtn = doc.register(new MockElement('button', 'expand-tab-btn'));
   const statusBadge = doc.register(new MockElement('div', 'status-badge', ['status-badge', 'checking']));
   const statusText = doc.register(new MockElement('span', 'status-text'));
   const apiUrlDisplay = doc.register(new MockElement('p', 'api-url-display'));
@@ -237,9 +240,30 @@ function setupMockPopupHarness(initialSettings = {}, statusResponse = { connecte
   const panelSettings = doc.register(new MockElement('div', 'tab-settings', ['tab-panel']));
 
   // Memories tab
+  const quickAddBtn = doc.register(new MockElement('button', 'quick-add-btn'));
   const searchInput = doc.register(new MockElement('input', 'search-input'));
   const searchBtn = doc.register(new MockElement('button', 'search-btn'));
   const searchResults = doc.register(new MockElement('div', 'search-results', ['results-list']));
+
+  // Quick Add Modal
+  const quickAddModal = doc.register(new MockElement('div', 'quick-add-modal', ['modal-overlay', 'hidden']));
+  const addMemoryTitle = doc.register(new MockElement('input', 'add-memory-title'));
+  const addMemoryNarrative = doc.register(new MockElement('textarea', 'add-memory-narrative'));
+  const addMemoryCategory = doc.register(new MockElement('input', 'add-memory-category'));
+  const addMemoryError = doc.register(new MockElement('div', 'add-memory-error', ['modal-error', 'hidden']));
+  const addMemoryCancelBtn = doc.register(new MockElement('button', 'add-memory-cancel-btn'));
+  const addMemorySaveBtn = doc.register(new MockElement('button', 'add-memory-save-btn'));
+  const addMemoryCloseBtn = doc.register(new MockElement('button', 'add-memory-close-btn'));
+
+  // Edit Memory Modal
+  const editMemoryModal = doc.register(new MockElement('div', 'edit-memory-modal', ['modal-overlay', 'hidden']));
+  const editMemoryTitle = doc.register(new MockElement('input', 'edit-memory-title'));
+  const editMemoryNarrative = doc.register(new MockElement('textarea', 'edit-memory-narrative'));
+  const editMemoryCategory = doc.register(new MockElement('input', 'edit-memory-category'));
+  const editMemoryError = doc.register(new MockElement('div', 'edit-memory-error', ['modal-error', 'hidden']));
+  const editMemoryCancelBtn = doc.register(new MockElement('button', 'edit-memory-cancel-btn'));
+  const editMemorySaveBtn = doc.register(new MockElement('button', 'edit-memory-save-btn'));
+  const editMemoryCloseBtn = doc.register(new MockElement('button', 'edit-memory-close-btn'));
 
   // History tab
   const historySearchBox = doc.register(new MockElement('div', 'history-search-box', ['search-box']));
@@ -348,6 +372,7 @@ function setupMockPopupHarness(initialSettings = {}, statusResponse = { connecte
   const saveSettingsBtn = doc.register(new MockElement('button', 'save-settings'));
 
   // Dispatched messages tracker
+  const createdTabs = [];
   const dispatchedMessages = [];
   let settingsState = {
     activeEngine: 'agentmemory',
@@ -480,10 +505,27 @@ function setupMockPopupHarness(initialSettings = {}, statusResponse = { connecte
               callback({ ok: true });
               break;
             }
+            case 'ADD_MEMORY': {
+              callback({ success: true, id: 'new-memory-101' });
+              break;
+            }
+            case 'UPDATE_MEMORY': {
+              callback({ success: true, id: message.id });
+              break;
+            }
+            case 'DELETE_MEMORY': {
+              callback({ success: true, id: message.id });
+              break;
+            }
             default:
               callback({ ok: true });
           }
         }, 0);
+      },
+    },
+    tabs: {
+      create(opts) {
+        createdTabs.push(opts);
       },
     },
     storage: {
@@ -583,7 +625,26 @@ function setupMockPopupHarness(initialSettings = {}, statusResponse = { connecte
       settingsFeedback,
       settingsError,
       saveSettingsBtn,
+      expandTabBtn,
+      quickAddBtn,
+      quickAddModal,
+      addMemoryTitle,
+      addMemoryNarrative,
+      addMemoryCategory,
+      addMemoryError,
+      addMemoryCancelBtn,
+      addMemorySaveBtn,
+      addMemoryCloseBtn,
+      editMemoryModal,
+      editMemoryTitle,
+      editMemoryNarrative,
+      editMemoryCategory,
+      editMemoryError,
+      editMemoryCancelBtn,
+      editMemorySaveBtn,
+      editMemoryCloseBtn,
     },
+    createdTabs,
     dispatchedMessages,
     mockChrome,
     mockSessions,
@@ -651,6 +712,12 @@ test('Popup Asset Integrity: popup.html contains all 3 tabs, engine controls, an
   assert.match(html, /id="session-detail-view"/, 'Session detail view present');
   assert.match(html, /id="detail-turns-container"/, 'Turns container present');
 
+  // Verify M2.4 CRUD modals and expand tab button
+  assert.match(html, /id="expand-tab-btn"/, 'Expand to Tab button present');
+  assert.match(html, /id="quick-add-btn"/, 'Quick Add Memory button present');
+  assert.match(html, /id="quick-add-modal"/, 'Quick Add modal dialog present');
+  assert.match(html, /id="edit-memory-modal"/, 'Edit Memory modal dialog present');
+
   // Verify scripts
   assert.match(html, /src="\.\.\/backends\/local-archive\.js"/, 'local-archive.js script tag present');
   assert.match(html, /src="popup\.js"/, 'popup.js script tag present');
@@ -676,6 +743,15 @@ test('Popup Asset Integrity: popup.css defines compliant body width, speech bubb
   assert.match(css, /\.filter-pills/, 'CSS contains .filter-pills');
   assert.match(css, /\.pill\.active/, 'CSS contains .pill.active');
   assert.match(css, /\.engine-selector/, 'CSS contains .engine-selector');
+
+  // Verify M2.4 Modals, Full-tab, and Dark Mode CSS
+  assert.match(css, /\.modal-overlay/, 'CSS contains .modal-overlay');
+  assert.match(css, /\.modal-card/, 'CSS contains .modal-card');
+  assert.match(css, /\.card-action-btn/, 'CSS contains .card-action-btn');
+  assert.match(css, /\.btn-delete-memory/, 'CSS contains .btn-delete-memory');
+  assert.match(css, /tab-view/, 'CSS contains tab-view full tab rules');
+  assert.match(css, /prefers-color-scheme:\s*dark/, 'CSS contains dark mode media query');
+  assert.match(css, /theme-dark/, 'CSS contains theme-dark class rules');
 });
 
 // -----------------------------------------------------------------------------
@@ -1283,3 +1359,221 @@ test('Popup Controller: doSearch safely handles HTMLCollection with read-only le
   const emptySearches = harness.dispatchedMessages.filter((m) => m.type === 'SEARCH' && m.query === '');
   assert.ok(emptySearches.length >= 2, 'doSearch("") must be dispatched on Escape');
 });
+
+test('Popup Controller: Quick Add Memory modal opens, validates input, and dispatches ADD_MEMORY', async () => {
+  const harness = setupMockPopupHarness();
+  const sandbox = {
+    document: harness.doc,
+    window: {},
+    chrome: harness.mockChrome,
+    navigator: { clipboard: { writeText: async () => {} } },
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  const code = fs.readFileSync(POPUP_JS_PATH, 'utf8');
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 20));
+
+  // 1. Open Quick Add Modal
+  harness.elements.quickAddBtn.dispatchEvent('click');
+  assert.equal(harness.elements.quickAddModal.classList.contains('hidden'), false, 'Modal should be visible');
+
+  // 2. Validate empty narrative
+  harness.elements.addMemoryNarrative.value = '   ';
+  harness.elements.addMemorySaveBtn.dispatchEvent('click');
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.equal(harness.elements.addMemoryError.classList.contains('hidden'), false, 'Error message should be shown');
+  assert.equal(harness.elements.addMemoryError.textContent, 'Narrative is required');
+  assert.equal(harness.dispatchedMessages.some((m) => m.type === 'ADD_MEMORY'), false, 'No message should be sent without narrative');
+
+  // 3. Fill narrative and submit
+  harness.elements.addMemoryTitle.value = 'Architecture Decision';
+  harness.elements.addMemoryNarrative.value = 'Use event sourcing with CQRS';
+  harness.elements.addMemoryCategory.value = 'architecture';
+
+  harness.elements.addMemorySaveBtn.dispatchEvent('click');
+  await new Promise((r) => setTimeout(r, 20));
+
+  const addMsg = harness.dispatchedMessages.find((m) => m.type === 'ADD_MEMORY');
+  assert.ok(addMsg, 'ADD_MEMORY message was dispatched');
+  assert.equal(addMsg.title, 'Architecture Decision');
+  assert.equal(addMsg.narrative, 'Use event sourcing with CQRS');
+  assert.equal(addMsg.category, 'architecture');
+
+  // Modal closed on success
+  assert.equal(harness.elements.quickAddModal.classList.contains('hidden'), true, 'Modal should be closed after save');
+
+  // 4. Test cancel button closes modal
+  harness.elements.quickAddBtn.dispatchEvent('click');
+  assert.equal(harness.elements.quickAddModal.classList.contains('hidden'), false);
+  harness.elements.addMemoryCancelBtn.dispatchEvent('click');
+  assert.equal(harness.elements.quickAddModal.classList.contains('hidden'), true, 'Cancel button closes modal');
+});
+
+test('Popup Controller: memory card inline edit opens edit modal and dispatches UPDATE_MEMORY', async () => {
+  const harness = setupMockPopupHarness();
+  const sandbox = {
+    document: harness.doc,
+    window: {},
+    chrome: harness.mockChrome,
+    navigator: { clipboard: { writeText: async () => {} } },
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  const code = fs.readFileSync(POPUP_JS_PATH, 'utf8');
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 30));
+
+  // Verify memory card rendered
+  assert.equal(harness.elements.searchResults.children.length, 1);
+  const card = harness.elements.searchResults.children[0];
+
+  // Find edit button inside card
+  const editBtn = card.querySelector('.btn-edit-memory');
+  assert.ok(editBtn, 'Edit button should exist on memory card');
+
+  // Click edit button
+  editBtn.dispatchEvent('click');
+  assert.equal(harness.elements.editMemoryModal.classList.contains('hidden'), false, 'Edit modal opens');
+  assert.equal(harness.elements.editMemoryTitle.value, 'System Design', 'Title prefilled');
+  assert.equal(harness.elements.editMemoryNarrative.value, 'Microservices architecture with gRPC', 'Narrative prefilled');
+
+  // Update narrative
+  harness.elements.editMemoryNarrative.value = 'Updated narrative: gRPC streaming architecture';
+  harness.elements.editMemorySaveBtn.dispatchEvent('click');
+  await new Promise((r) => setTimeout(r, 20));
+
+  const updateMsg = harness.dispatchedMessages.find((m) => m.type === 'UPDATE_MEMORY');
+  assert.ok(updateMsg, 'UPDATE_MEMORY message was dispatched');
+  assert.equal(updateMsg.id, 'mem-1');
+  assert.equal(updateMsg.narrative, 'Updated narrative: gRPC streaming architecture');
+  assert.equal(harness.elements.editMemoryModal.classList.contains('hidden'), true, 'Edit modal closed');
+});
+
+test('Popup Controller: memory card inline delete prompts confirmation and dispatches DELETE_MEMORY', async () => {
+  const harness = setupMockPopupHarness();
+  const sandbox = {
+    document: harness.doc,
+    window: {},
+    chrome: harness.mockChrome,
+    navigator: { clipboard: { writeText: async () => {} } },
+    confirm: () => true,
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  const code = fs.readFileSync(POPUP_JS_PATH, 'utf8');
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 30));
+
+  assert.equal(harness.elements.searchResults.children.length, 1);
+  const card = harness.elements.searchResults.children[0];
+
+  // First select the card so it is in selectedMemories
+  card.dispatchEvent('click');
+  assert.equal(harness.elements.attachCount.textContent, '1 selected');
+
+  const deleteBtn = card.querySelector('.btn-delete-memory');
+  assert.ok(deleteBtn, 'Delete button should exist on memory card');
+
+  deleteBtn.dispatchEvent('click');
+  await new Promise((r) => setTimeout(r, 20));
+
+  const deleteMsg = harness.dispatchedMessages.find((m) => m.type === 'DELETE_MEMORY');
+  assert.ok(deleteMsg, 'DELETE_MEMORY message was dispatched');
+  assert.equal(deleteMsg.id, 'mem-1');
+
+  // Selection cleared
+  assert.equal(harness.elements.attachBar.classList.contains('hidden'), true, 'Attach bar should be hidden when selected memory is deleted');
+});
+
+test('Popup Controller: Expand to Tab creates new browser tab with popup/popup.html?view=tab', async () => {
+  const harness = setupMockPopupHarness();
+  const sandbox = {
+    document: harness.doc,
+    window: {},
+    chrome: harness.mockChrome,
+    navigator: { clipboard: { writeText: async () => {} } },
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  const code = fs.readFileSync(POPUP_JS_PATH, 'utf8');
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 20));
+
+  harness.elements.expandTabBtn.dispatchEvent('click');
+
+  assert.equal(harness.createdTabs.length, 1, 'Should call chrome.tabs.create');
+  assert.equal(harness.createdTabs[0].url, 'popup/popup.html?view=tab');
+});
+
+test('Popup Controller: tab-view query param adds tab-view class to html/body and hides expand button', async () => {
+  const harness = setupMockPopupHarness();
+  const mockLocation = {
+    search: '?view=tab',
+    href: 'chrome-extension://abcdef/popup/popup.html?view=tab',
+  };
+
+  const sandbox = {
+    document: harness.doc,
+    window: { location: mockLocation },
+    chrome: harness.mockChrome,
+    navigator: { clipboard: { writeText: async () => {} } },
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  const code = fs.readFileSync(POPUP_JS_PATH, 'utf8');
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(harness.doc.body.classList.contains('tab-view'), true, 'body must have tab-view class');
+  assert.equal(harness.elements.expandTabBtn.classList.contains('hidden'), true, 'Expand button must be hidden in tab view');
+});
+
+test('Popup Controller: prefers-color-scheme: dark activates dark mode', async () => {
+  const harness = setupMockPopupHarness();
+  const sandbox = {
+    document: harness.doc,
+    window: {
+      matchMedia: (q) => ({
+        matches: q === '(prefers-color-scheme: dark)',
+        addEventListener: () => {},
+      }),
+    },
+    chrome: harness.mockChrome,
+    navigator: { clipboard: { writeText: async () => {} } },
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  const code = fs.readFileSync(POPUP_JS_PATH, 'utf8');
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(harness.doc.body.classList.contains('theme-dark'), true, 'body must have theme-dark class');
+  assert.equal(harness.doc.body.getAttribute('data-theme'), 'dark', 'body must have data-theme=dark');
+});
+

@@ -10,15 +10,23 @@ const OAM = (() => {
   const CONTEXT_HEADER = '---\n[AgentMemory Context — selected from past sessions]\n---\n';
   const CONTEXT_FOOTER = '\n---\n[End AgentMemory Context]\n---\n\n';
 
-  let _sessionId = `web_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  type RouteState = 'DRAFT' | 'BOUND' | 'SWITCHED';
+
+  let _routeState: RouteState = 'DRAFT';
+  let _currentThreadId: string | null = null;
+  let _lastUrl = typeof location !== 'undefined' ? location.href : '';
+  let _currentConfig: PlatformConfig | any = null;
+  let _reinitPage: (() => void) | null = null;
+  let _routeTrackingInitialized = false;
+
   let _platform = 'unknown';
+  let _sessionId = `draft_unknown_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   let _observedMessages = new Set<string>();
   let _pendingMessages = new Set<string>();
   let _debounceTimer: any = null;
   let _domObserver: MutationObserver | null = null;
   let _domRetryTimer: any = null;
   let _hookTimer: any = null;
-  let _navigationObserver: MutationObserver | null = null;
   let _queueListenerInitialized = false;
   let _sessionEnded = false;
   let _showNotifications = true;
@@ -168,6 +176,226 @@ const OAM = (() => {
   }
 
   // ---------------------------------------------------------------------------
+  // Route tracking & SPA thread extraction
+  // ---------------------------------------------------------------------------
+
+  function detectPlatformFromUrl(url: string): string {
+    try {
+      const base = typeof location !== 'undefined' ? location.origin : 'http://localhost';
+      const host = new URL(url, base).hostname.toLowerCase();
+      if (host.includes('chatgpt.com')) return 'chatgpt';
+      if (host.includes('claude.ai')) return 'claude';
+      if (host.includes('gemini.google.com')) return 'gemini';
+      if (host.includes('aistudio.google.com')) return 'aistudio';
+      if (host.includes('grok.com') || host.includes('x.com')) return 'grok';
+    } catch {
+      // Fallback if URL parsing fails
+    }
+    return 'unknown';
+  }
+
+  function extractThreadId(url: string, platform?: string, config?: any): string | null {
+    if (config?.threadIdExtractor && typeof config.threadIdExtractor === 'function') {
+      return config.threadIdExtractor(url);
+    }
+
+    try {
+      const base = typeof location !== 'undefined' ? location.origin : 'http://localhost';
+      const parsed = new URL(url, base);
+      const pathname = parsed.pathname;
+
+      const plat = (platform && platform !== 'unknown')
+        ? platform.trim().toLowerCase()
+        : detectPlatformFromUrl(url);
+
+      switch (plat) {
+        case 'chatgpt': {
+          // Matches /c/:uuid or /g/g-model/c/:uuid
+          const match = pathname.match(/\/c\/([a-zA-Z0-9_-]+)/);
+          return match ? match[1] : null;
+        }
+        case 'claude': {
+          // Matches /chat/:uuid
+          const match = pathname.match(/\/chat\/([a-zA-Z0-9_-]+)/);
+          return match ? match[1] : null;
+        }
+        case 'gemini': {
+          // Matches /app/:id where id is not empty or 'new'
+          const match = pathname.match(/^\/app\/([a-zA-Z0-9_-]+)/);
+          if (match && match[1] && match[1].toLowerCase() !== 'new') {
+            return match[1];
+          }
+          return null;
+        }
+        case 'aistudio': {
+          // Matches /prompts/:id where id is not 'new' or 'new_chat'
+          const match = pathname.match(/\/prompts\/([a-zA-Z0-9_-]+)/);
+          if (match && match[1] && !['new', 'new_chat'].includes(match[1].toLowerCase())) {
+            return match[1];
+          }
+          return null;
+        }
+        case 'grok': {
+          // Matches /c/:id or /chat/:id
+          const match = pathname.match(/\/(?:c|chat)\/([a-zA-Z0-9_-]+)/);
+          return match ? match[1] : null;
+        }
+        default: {
+          if (config?.threadPattern) {
+            const match = pathname.match(config.threadPattern);
+            return match ? match[1] : null;
+          }
+          return null;
+        }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  function handleRouteChange(oldUrl: string, newUrl: string): void {
+    _lastUrl = newUrl;
+    const newThreadId = extractThreadId(newUrl, _platform, _currentConfig);
+
+    // If thread ID hasn't changed (e.g. query params, hash change, or remaining on root/same thread)
+    if (newThreadId === _currentThreadId) {
+      return;
+    }
+
+    // 1. DRAFT -> BOUND transition (first turn submitted, SPA URL transitions to thread)
+    if (_routeState === 'DRAFT' && newThreadId !== null) {
+      const oldSessionId = _sessionId;
+      const newSessionId = `${_platform}_${newThreadId}`;
+      _routeState = 'BOUND';
+      _currentThreadId = newThreadId;
+      _sessionId = newSessionId;
+
+      sendToBackground({
+        type: 'SESSION_ALIAS',
+        oldSessionId,
+        newSessionId,
+        platform: _platform,
+        threadId: newThreadId,
+        url: typeof location !== 'undefined' ? location.href : newUrl,
+      });
+
+      if (typeof _reinitPage === 'function') {
+        _reinitPage();
+      }
+      return;
+    }
+
+    // 2. Navigation between different threads or back to root -> transition through 'SWITCHED'
+    _routeState = 'SWITCHED';
+
+    if (!_sessionEnded) {
+      sendToBackground({
+        type: 'SESSION_END',
+        sessionId: _sessionId,
+      });
+    }
+
+    _observedMessages.clear();
+    _pendingMessages.clear();
+
+    clearTimeout(_domRetryTimer);
+    clearTimeout(_debounceTimer);
+    if (_domObserver) {
+      _domObserver.disconnect();
+      _domObserver = null;
+    }
+
+    _sessionEnded = false;
+
+    if (newThreadId !== null) {
+      // SWITCHED -> BOUND (switched to another thread)
+      _currentThreadId = newThreadId;
+      _sessionId = `${_platform}_${newThreadId}`;
+      _routeState = 'BOUND';
+      startSession();
+      if (typeof _reinitPage === 'function') {
+        _reinitPage();
+      }
+    } else {
+      // SWITCHED -> DRAFT (navigated back to root / new chat)
+      _currentThreadId = null;
+      const rand = Math.random().toString(36).slice(2, 6);
+      _sessionId = `draft_${_platform}_${Date.now()}_${rand}`;
+      _routeState = 'DRAFT';
+      startSession();
+      if (typeof _reinitPage === 'function') {
+        _reinitPage();
+      }
+    }
+  }
+
+  function initRouteTracking(): void {
+    if (_routeTrackingInitialized) return;
+    _routeTrackingInitialized = true;
+
+    function checkRoute(): void {
+      const currentUrl = typeof location !== 'undefined' ? location.href : '';
+      if (!currentUrl || currentUrl === _lastUrl) return;
+      const oldUrl = _lastUrl;
+      handleRouteChange(oldUrl, currentUrl);
+    }
+
+    // 1. Monkey-patch history.pushState and history.replaceState with __oam_patched guard
+    if (typeof history !== 'undefined') {
+      const origPush = history.pushState;
+      if (origPush && !(origPush as any).__oam_patched) {
+        history.pushState = function (...args: any[]) {
+          const ret = origPush.apply(this, args as any);
+          if (typeof location !== 'undefined' && args[2] && location.href === _lastUrl) {
+            try {
+              const base = location.origin || 'http://localhost';
+              location.href = new URL(args[2], base).href;
+            } catch {
+              location.href = String(args[2]);
+            }
+          }
+          checkRoute();
+          return ret;
+        };
+        (history.pushState as any).__oam_patched = true;
+      }
+
+      const origReplace = history.replaceState;
+      if (origReplace && !(origReplace as any).__oam_patched) {
+        history.replaceState = function (...args: any[]) {
+          const ret = origReplace.apply(this, args as any);
+          if (typeof location !== 'undefined' && args[2] && location.href === _lastUrl) {
+            try {
+              const base = location.origin || 'http://localhost';
+              location.href = new URL(args[2], base).href;
+            } catch {
+              location.href = String(args[2]);
+            }
+          }
+          checkRoute();
+          return ret;
+        };
+        (history.replaceState as any).__oam_patched = true;
+      }
+    }
+
+    // 2. Standard popstate and hashchange listeners
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('popstate', checkRoute);
+      window.addEventListener('hashchange', checkRoute);
+
+      // 3. Chromium Navigation API
+      if (typeof (window as any).navigation !== 'undefined' && typeof (window as any).navigation.addEventListener === 'function') {
+        try {
+          (window as any).navigation.addEventListener('currententrychange', checkRoute);
+        } catch {
+          // Navigation API listener fallback
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Background messaging
   // ---------------------------------------------------------------------------
 
@@ -269,6 +497,22 @@ const OAM = (() => {
 
   function initPlatform(config: PlatformConfig): void {
     _platform = config.platform;
+    _currentConfig = config;
+    _lastUrl = typeof location !== 'undefined' ? location.href : '';
+
+    const initialThreadId = extractThreadId(_lastUrl, _platform, config);
+    if (initialThreadId) {
+      _routeState = 'BOUND';
+      _currentThreadId = initialThreadId;
+      _sessionId = `${_platform}_${initialThreadId}`;
+    } else {
+      _routeState = 'DRAFT';
+      _currentThreadId = null;
+      const rand = Math.random().toString(36).slice(2, 6);
+      _sessionId = `draft_${_platform}_${Date.now()}_${rand}`;
+    }
+
+    _sessionEnded = false;
     startSession();
     initQueueListener();
 
@@ -333,17 +577,10 @@ const OAM = (() => {
       attachSendHooks();
     }
 
+    _reinitPage = initializePage;
     setTimeout(initializePage, 1500);
 
-    if (!_navigationObserver) {
-      let lastUrl = location.href;
-      _navigationObserver = new MutationObserver(() => {
-        if (location.href === lastUrl) return;
-        lastUrl = location.href;
-        setTimeout(initializePage, 1000);
-      });
-      _navigationObserver.observe(document.documentElement, { childList: true, subtree: true });
-    }
+    initRouteTracking();
 
     window.addEventListener('pagehide', (event) => {
       if (!event.persisted && !_sessionEnded) {
@@ -409,6 +646,10 @@ const OAM = (() => {
     get sessionId() { return _sessionId; },
     set platform(p: string) { _platform = p; },
     get platform() { return _platform; },
+    get routeState() { return _routeState; },
+    get threadId() { return _currentThreadId; },
+    get observedMessages() { return _observedMessages; },
+    get pendingMessages() { return _pendingMessages; },
 
     initQueueListener,
     getQueuedContext,
@@ -422,5 +663,8 @@ const OAM = (() => {
     showToast,
     truncate,
     hashSimple,
+    extractThreadId,
+    handleRouteChange,
+    initRouteTracking,
   };
 })();

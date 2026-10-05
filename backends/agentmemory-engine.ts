@@ -162,6 +162,112 @@ class AgentMemoryEngine extends (BaseEngineClass as typeof BaseMemoryEngine) {
   }
 
   /**
+   * Adds a memory via POST /agentmemory/memory/add (with fallback to observe format).
+   */
+  async addMemory({ title = '', narrative = '', category = '', metadata = {} }: {
+    title?: string;
+    narrative: string;
+    category?: string;
+    metadata?: Record<string, any>;
+  }): Promise<MemoryCrudResponse> {
+    try {
+      const payload = {
+        title: title || 'Manual Memory',
+        narrative,
+        category: category || 'general',
+        facts: (metadata as any)?.facts || [],
+        metadata: {
+          title,
+          category,
+          source: 'manual_popup',
+          timestamp: new Date().toISOString(),
+          ...metadata,
+        },
+      };
+
+      const res = await this._request('memory/add', { body: payload });
+      if (res && !res.error) {
+        return { success: true, id: String(res.id || res.turnId || `agentmem_${Date.now()}`) };
+      }
+
+      // Fallback to observe format if memory/add is not supported
+      const obsRes = await this.observe({
+        content: narrative,
+        userPrompt: title ? `${title}: ${narrative}` : narrative,
+        platform: 'manual',
+      });
+      return {
+        success: !!obsRes.success,
+        id: obsRes.id,
+        error: obsRes.error,
+        status: obsRes.status,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Updates a memory via POST /agentmemory/memory/update (fallback PUT /agentmemory/memory/:id).
+   */
+  async updateMemory(id: string, updates: {
+    title?: string;
+    narrative?: string;
+    category?: string;
+    metadata?: Record<string, any>;
+  }): Promise<MemoryCrudResponse> {
+    try {
+      const res = await this._request('memory/update', { body: { id, ...updates } });
+      if (res && !res.error) {
+        return { success: true, id };
+      }
+
+      const fallbackRes = await this._request(`memory/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: updates,
+      });
+      if (fallbackRes && !fallbackRes.error) {
+        return { success: true, id };
+      }
+
+      return {
+        success: false,
+        error: res?.error || fallbackRes?.error || 'Update failed',
+        status: res?.status || fallbackRes?.status,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Deletes a memory via POST /agentmemory/memory/delete (fallback DELETE /agentmemory/memory/:id).
+   */
+  async deleteMemory(id: string): Promise<MemoryCrudResponse> {
+    try {
+      const res = await this._request('memory/delete', { body: { id } });
+      if (res && !res.error) {
+        return { success: true };
+      }
+
+      const fallbackRes = await this._request(`memory/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (fallbackRes && !fallbackRes.error) {
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        error: res?.error || fallbackRes?.error || 'Delete failed',
+        status: res?.status || fallbackRes?.status,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * Returns web dashboard URL
    */
   getDashboardUrl(): string {

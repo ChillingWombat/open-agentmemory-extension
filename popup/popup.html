@@ -15,6 +15,13 @@
         <span class="logo-text">WebAI Memory</span>
       </div>
       <div class="header-actions">
+        <button id="expand-tab-btn" class="icon-btn" type="button" title="Expand to Tab" aria-label="Expand to Tab">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h6v6"></path>
+            <path d="M10 14L21 3"></path>
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          </svg>
+        </button>
         <a id="dashboard-link" href="http://localhost:8000" target="_blank" title="Dashboard Console" class="icon-btn" aria-label="Open Dashboard">
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="9" rx="1"></rect>
@@ -66,6 +73,9 @@
     <div class="search-box">
       <input type="text" id="search-input" placeholder="Search recalled memories…" autocomplete="off">
       <button id="search-btn" title="Recall memories" aria-label="Search memories">Recall</button>
+    </div>
+    <div class="memories-toolbar">
+      <button id="quick-add-btn" class="btn-sm btn-primary" type="button" title="Add a new memory manually">+ Quick Add Memory</button>
     </div>
     <div id="search-results" class="results-list">
       <div class="hint-text">Search past memories across your AI sessions</div>
@@ -300,6 +310,64 @@
   <div id="attach-bar" class="attach-bar hidden">
     <span id="attach-count">0 selected</span>
     <button id="attach-btn" class="btn-attach">📎 Queue for next prompt</button>
+  </div>
+
+  <!-- Quick Add Memory Modal -->
+  <div id="quick-add-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="add-memory-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="add-memory-modal-title" class="modal-title">Quick Add Memory</h3>
+        <button id="add-memory-close-btn" class="modal-close-btn" type="button" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="add-memory-error" class="modal-error hidden" role="alert"></div>
+        <div class="form-group">
+          <label for="add-memory-title">Title (optional)</label>
+          <input type="text" id="add-memory-title" class="modal-input" placeholder="e.g. Project Architecture Decision" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="add-memory-narrative">Narrative <span class="required">*</span></label>
+          <textarea id="add-memory-narrative" class="modal-textarea" rows="4" placeholder="Memory narrative or facts..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="add-memory-category">Category (optional)</label>
+          <input type="text" id="add-memory-category" class="modal-input" placeholder="e.g. decision, fact, preference" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="add-memory-cancel-btn" class="btn-sm btn-secondary" type="button">Cancel</button>
+        <button id="add-memory-save-btn" class="btn-sm btn-primary" type="button">Save Memory</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Memory Modal -->
+  <div id="edit-memory-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="edit-memory-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="edit-memory-modal-title" class="modal-title">Edit Memory</h3>
+        <button id="edit-memory-close-btn" class="modal-close-btn" type="button" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="edit-memory-error" class="modal-error hidden" role="alert"></div>
+        <div class="form-group">
+          <label for="edit-memory-title">Title</label>
+          <input type="text" id="edit-memory-title" class="modal-input" placeholder="Title" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="edit-memory-narrative">Narrative <span class="required">*</span></label>
+          <textarea id="edit-memory-narrative" class="modal-textarea" rows="4" placeholder="Memory narrative or facts..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="edit-memory-category">Category</label>
+          <input type="text" id="edit-memory-category" class="modal-input" placeholder="Category" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="edit-memory-cancel-btn" class="btn-sm btn-secondary" type="button">Cancel</button>
+        <button id="edit-memory-save-btn" class="btn-sm btn-primary" type="button">Save Changes</button>
+      </div>
+    </div>
   </div>
 
   <script src="../backends/local-archive.js"></script>

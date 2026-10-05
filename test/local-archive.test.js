@@ -576,3 +576,272 @@ test('LocalArchive: handles special characters, unicode, code blocks, and multil
   const searchCode = await LocalArchive.getSessions({ query: 'Unicode & <tags>' });
   assert.equal(searchCode.length, 1);
 });
+
+test('LocalArchive Mutex: concurrent saves across 20 distinct sessions preserve all sessions without data loss', async () => {
+  setupTestEnvironment();
+
+  const count = 20;
+  const sessionIds = Array.from({ length: count }, (_, i) => `concurrent_tab_${i}`);
+
+  await Promise.all(
+    sessionIds.map((sid, i) =>
+      LocalArchive.saveTurn({
+        sessionId: sid,
+        platform: 'gemini',
+        userPrompt: `Prompt ${i}`,
+        assistantResponse: `Response ${i}`,
+      })
+    )
+  );
+
+  const sessions = await LocalArchive.getSessions({ limit: 100 });
+  assert.equal(sessions.length, count, `All ${count} sessions must be preserved in index`);
+
+  const meta = await LocalArchive.getMeta();
+  assert.equal(meta.totalSessions, count);
+  assert.equal(meta.totalTurns, count);
+
+  // Verify all 20 individual sessions have their turn intact
+  for (let i = 0; i < count; i++) {
+    const details = await LocalArchive.getSessionDetails(`concurrent_tab_${i}`);
+    assert.ok(details.session, `Session concurrent_tab_${i} exists`);
+    assert.equal(details.turns.length, 1);
+    assert.equal(details.turns[0].userText, `Prompt ${i}`);
+    assert.equal(details.turns[0].assistantText, `Response ${i}`);
+  }
+});
+
+test('LocalArchive Mutex: concurrent saves to the same session sequence turns correctly without overwrite', async () => {
+  setupTestEnvironment();
+
+  const sessionId = 'shared_session_concurrent';
+  const turnCount = 8;
+  const turns = Array.from({ length: turnCount }, (_, i) => ({
+    userPrompt: `Question ${i + 1}`,
+    assistantResponse: `Answer ${i + 1}`,
+  }));
+
+  await Promise.all(
+    turns.map((t) =>
+      LocalArchive.saveTurn({
+        sessionId,
+        platform: 'chatgpt',
+        userPrompt: t.userPrompt,
+        assistantResponse: t.assistantResponse,
+      })
+    )
+  );
+
+  const { session, turns: savedTurns } = await LocalArchive.getSessionDetails(sessionId);
+  assert.ok(session);
+  assert.equal(session.turnCount, turnCount);
+  assert.equal(savedTurns.length, turnCount);
+
+  // Verify all turnIds are sequenced
+  for (let i = 0; i < turnCount; i++) {
+    assert.equal(savedTurns[i].turnId, `turn_${i + 1}`);
+    assert.equal(savedTurns[i].userText, `Question ${i + 1}`);
+    assert.equal(savedTurns[i].assistantText, `Answer ${i + 1}`);
+  }
+});
+
+test('LocalArchive Mutex: promise rejection does not stall subsequent queued operations', async () => {
+  setupTestEnvironment();
+
+  let rejectedCaught = false;
+
+  // Enqueue failing task
+  const failingOp = LocalArchive._enqueue(async () => {
+    throw new Error('Storage simulated quota error');
+  });
+
+  // Enqueue succeeding task right behind it
+  const succeedingOp = LocalArchive.saveTurn({
+    sessionId: 'after_error_session',
+    platform: 'claude',
+    userPrompt: 'Are you working?',
+    assistantResponse: 'Yes, fully operational.',
+  });
+
+  try {
+    await failingOp;
+  } catch (err) {
+    rejectedCaught = true;
+    assert.equal(err.message, 'Storage simulated quota error');
+  }
+
+  assert.equal(rejectedCaught, true);
+
+  const result = await succeedingOp;
+  assert.equal(result.success, true);
+  assert.equal(result.sessionId, 'after_error_session');
+
+  const { session, turns } = await LocalArchive.getSessionDetails('after_error_session');
+  assert.ok(session);
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].assistantText, 'Yes, fully operational.');
+});
+
+test('LocalArchive Batch Query: getSessions executes a single batch storage call for non-matching turn keys', async () => {
+  setupTestEnvironment();
+
+  // Create 15 sessions where keyword is NOT in title or snippet
+  for (let i = 0; i < 15; i++) {
+    await LocalArchive.saveTurn({
+      sessionId: `batch_s_${i}`,
+      platform: 'aistudio',
+      userPrompt: `Generic title ${i}`,
+      assistantResponse: `Generic snippet ${i}`,
+    });
+  }
+
+  // Session 12 has the keyword inside its Turn 1, while Turn 2 has generic text so snippet only shows Turn 2
+  await LocalArchive.saveTurn({
+    sessionId: 'batch_s_12',
+    platform: 'aistudio',
+    turnId: 'deep_turn_1',
+    userPrompt: 'Deep question about Chromium internals',
+    assistantResponse: 'The secret keyword is CHROMIUM_MUTEX_OPTIMIZATION embedded in dialogue.',
+  });
+  await LocalArchive.saveTurn({
+    sessionId: 'batch_s_12',
+    platform: 'aistudio',
+    turnId: 'deep_turn_2',
+    userPrompt: 'Subsequent prompt',
+    assistantResponse: 'Generic follow-up conclusion without any keyword in latest snippet.',
+  });
+
+  let getCallCount = 0;
+  let batchKeysPassed = null;
+  const originalGet = chrome.storage.local.get;
+  chrome.storage.local.get = async (keys) => {
+    getCallCount++;
+    if (Array.isArray(keys) && keys.length > 2) {
+      batchKeysPassed = keys;
+    }
+    return originalGet.call(chrome.storage.local, keys);
+  };
+
+  const results = await LocalArchive.getSessions({ query: 'CHROMIUM_MUTEX_OPTIMIZATION' });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].id, 'batch_s_12');
+  // Exactly 2 storage calls: 1 for SESSIONS_KEY, 1 batch call for all candidate turn keys
+  assert.equal(getCallCount, 2, 'Must execute exactly 2 storage calls (index + batched turns), not sequential per session');
+  assert.ok(Array.isArray(batchKeysPassed));
+  assert.equal(batchKeysPassed.length, 15);
+});
+
+test('LocalArchive: aliasSession migrates draft session to permanent thread ID and cleans up old storage', async () => {
+  const mock = setupTestEnvironment();
+
+  // Save 2 turns under a draft session ID
+  await LocalArchive.saveTurn({
+    sessionId: 'draft_chatgpt_123',
+    platform: 'chatgpt',
+    userPrompt: 'What is WebAI Memory?',
+    assistantResponse: 'It is a local client-side memory extension.',
+  });
+  await LocalArchive.saveTurn({
+    sessionId: 'draft_chatgpt_123',
+    platform: 'chatgpt',
+    userPrompt: 'Does it support zero retention?',
+    assistantResponse: 'Yes, full zero-retention local archiving.',
+  });
+
+  // Verify draft exists in mock storage
+  assert.ok(mock.data[`${LocalArchive.TURNS_PREFIX}draft_chatgpt_123`]);
+
+  // Alias draft to canonical thread ID
+  const aliasResult = await LocalArchive.aliasSession({
+    oldSessionId: 'draft_chatgpt_123',
+    newSessionId: 'chatgpt_thread_abc_999',
+    platform: 'chatgpt',
+  });
+
+  assert.equal(aliasResult.success, true);
+  assert.equal(aliasResult.oldSessionId, 'draft_chatgpt_123');
+  assert.equal(aliasResult.newSessionId, 'chatgpt_thread_abc_999');
+  assert.equal(aliasResult.turnCount, 2);
+
+  // Old key should be deleted from storage
+  assert.equal(mock.data[`${LocalArchive.TURNS_PREFIX}draft_chatgpt_123`], undefined);
+
+  // New key should have turns with rekeyed sessionId
+  const newTurns = mock.data[`${LocalArchive.TURNS_PREFIX}chatgpt_thread_abc_999`];
+  assert.ok(Array.isArray(newTurns));
+  assert.equal(newTurns.length, 2);
+  assert.equal(newTurns[0].sessionId, 'chatgpt_thread_abc_999');
+  assert.equal(newTurns[0].turnId, 'turn_1');
+  assert.equal(newTurns[1].sessionId, 'chatgpt_thread_abc_999');
+  assert.equal(newTurns[1].turnId, 'turn_2');
+
+  // Session metadata should be rekeyed in index
+  const sessions = await LocalArchive.getSessions();
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].id, 'chatgpt_thread_abc_999');
+  assert.equal(sessions[0].turnCount, 2);
+  assert.match(sessions[0].snippet, /zero-retention local archiving/);
+});
+
+test('LocalArchive: aliasSession merges draft turns into existing thread session deduplicating turns', async () => {
+  setupTestEnvironment();
+
+  // Draft session has Turn 1
+  await LocalArchive.saveTurn({
+    sessionId: 'draft_claude_456',
+    platform: 'claude',
+    userPrompt: 'Hello Claude',
+    assistantResponse: 'Hello! How can I assist you today?',
+  });
+
+  // Thread session already has Turn 1 (duplicate) and Turn 2
+  await LocalArchive.saveTurn({
+    sessionId: 'claude_thread_xyz_111',
+    platform: 'claude',
+    userPrompt: 'Hello Claude',
+    assistantResponse: 'Hello! How can I assist you today?',
+  });
+  await LocalArchive.saveTurn({
+    sessionId: 'claude_thread_xyz_111',
+    platform: 'claude',
+    userPrompt: 'Tell me about quantum computing',
+    assistantResponse: 'Quantum computing leverages qubits and superposition.',
+  });
+
+  // Alias draft into existing thread session
+  const aliasResult = await LocalArchive.aliasSession({
+    oldSessionId: 'draft_claude_456',
+    newSessionId: 'claude_thread_xyz_111',
+    platform: 'claude',
+  });
+
+  assert.equal(aliasResult.success, true);
+  assert.equal(aliasResult.turnCount, 2, 'Duplicate Turn 1 should be deduplicated, yielding 2 turns');
+
+  // Verify index: draft session removed, only canonical session remains
+  const sessions = await LocalArchive.getSessions();
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].id, 'claude_thread_xyz_111');
+  assert.equal(sessions[0].turnCount, 2);
+
+  // Verify turns
+  const { turns } = await LocalArchive.getSessionDetails('claude_thread_xyz_111');
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0].turnId, 'turn_1');
+  assert.equal(turns[0].userText, 'Hello Claude');
+  assert.equal(turns[1].turnId, 'turn_2');
+  assert.equal(turns[1].userText, 'Tell me about quantum computing');
+});
+
+test('LocalArchive: aliasSession rejects invalid or identical session IDs', async () => {
+  setupTestEnvironment();
+
+  const res1 = await LocalArchive.aliasSession({ oldSessionId: '', newSessionId: 'new_id' });
+  assert.equal(res1.success, false);
+  assert.equal(res1.turnCount, 0);
+
+  const res2 = await LocalArchive.aliasSession({ oldSessionId: 'same_id', newSessionId: 'same_id' });
+  assert.equal(res2.success, false);
+  assert.equal(res2.turnCount, 0);
+});

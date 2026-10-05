@@ -14,7 +14,10 @@ const state = {
     currentHistoryPlatform: 'all',
     currentHistoryQuery: '',
     activeSessionId: null,
+    editingMemoryId: null,
 };
+let moduleBuildMemoryCard = null;
+let moduleDoSearch = null;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function msg(message) {
     return new Promise((resolve) => {
@@ -110,6 +113,7 @@ async function initPopup() {
     if (typeof document === 'undefined')
         return;
     // Element references
+    const expandTabBtn = document.getElementById('expand-tab-btn');
     const statusBadge = document.getElementById('status-badge');
     const statusText = document.getElementById('status-text');
     const apiUrlDisplay = document.getElementById('api-url-display');
@@ -127,9 +131,28 @@ async function initPopup() {
     const attachCount = document.getElementById('attach-count');
     const attachBtn = document.getElementById('attach-btn');
     // Memories tab
+    const quickAddBtn = document.getElementById('quick-add-btn');
     const searchInput = document.getElementById('search-input');
     const searchBtn = document.getElementById('search-btn');
     const searchResults = document.getElementById('search-results');
+    // Quick Add Modal elements
+    const quickAddModal = document.getElementById('quick-add-modal');
+    const addMemoryTitle = document.getElementById('add-memory-title');
+    const addMemoryNarrative = document.getElementById('add-memory-narrative');
+    const addMemoryCategory = document.getElementById('add-memory-category');
+    const addMemoryError = document.getElementById('add-memory-error');
+    const addMemoryCancelBtn = document.getElementById('add-memory-cancel-btn');
+    const addMemorySaveBtn = document.getElementById('add-memory-save-btn');
+    const addMemoryCloseBtn = document.getElementById('add-memory-close-btn');
+    // Edit Memory Modal elements
+    const editMemoryModal = document.getElementById('edit-memory-modal');
+    const editMemoryTitle = document.getElementById('edit-memory-title');
+    const editMemoryNarrative = document.getElementById('edit-memory-narrative');
+    const editMemoryCategory = document.getElementById('edit-memory-category');
+    const editMemoryError = document.getElementById('edit-memory-error');
+    const editMemoryCancelBtn = document.getElementById('edit-memory-cancel-btn');
+    const editMemorySaveBtn = document.getElementById('edit-memory-save-btn');
+    const editMemoryCloseBtn = document.getElementById('edit-memory-close-btn');
     // Local History tab
     const historySearchInput = document.getElementById('history-search-input');
     const historySearchBtn = document.getElementById('history-search-btn');
@@ -958,6 +981,169 @@ async function initPopup() {
             updateQueueBanner(String(data.oamQueuedContext));
         }
     }
+    // ---------------------------------------------------------------------------
+    // Memory CRUD & Modals
+    // ---------------------------------------------------------------------------
+    function openQuickAddModal() {
+        if (addMemoryTitle)
+            addMemoryTitle.value = '';
+        if (addMemoryNarrative)
+            addMemoryNarrative.value = '';
+        if (addMemoryCategory)
+            addMemoryCategory.value = '';
+        if (addMemoryError) {
+            addMemoryError.classList.add('hidden');
+            addMemoryError.textContent = '';
+        }
+        if (quickAddModal)
+            quickAddModal.classList.remove('hidden');
+        if (addMemoryNarrative && typeof addMemoryNarrative.focus === 'function') {
+            addMemoryNarrative.focus();
+        }
+    }
+    function closeQuickAddModal() {
+        if (quickAddModal)
+            quickAddModal.classList.add('hidden');
+        if (addMemoryError) {
+            addMemoryError.classList.add('hidden');
+            addMemoryError.textContent = '';
+        }
+    }
+    if (quickAddBtn)
+        quickAddBtn.addEventListener('click', openQuickAddModal);
+    if (addMemoryCancelBtn)
+        addMemoryCancelBtn.addEventListener('click', closeQuickAddModal);
+    if (addMemoryCloseBtn)
+        addMemoryCloseBtn.addEventListener('click', closeQuickAddModal);
+    if (addMemorySaveBtn) {
+        addMemorySaveBtn.addEventListener('click', async () => {
+            const title = addMemoryTitle ? addMemoryTitle.value.trim() : '';
+            const narrative = addMemoryNarrative ? addMemoryNarrative.value.trim() : '';
+            const category = addMemoryCategory ? addMemoryCategory.value.trim() : '';
+            if (!narrative) {
+                if (addMemoryError) {
+                    addMemoryError.textContent = 'Narrative is required';
+                    addMemoryError.classList.remove('hidden');
+                }
+                return;
+            }
+            if (addMemoryError)
+                addMemoryError.classList.add('hidden');
+            const res = await msg({
+                type: 'ADD_MEMORY',
+                title: title || undefined,
+                narrative,
+                category: category || undefined,
+            });
+            if (!res || res.error || res.success === false) {
+                if (addMemoryError) {
+                    addMemoryError.textContent = res?.error || 'Failed to save memory';
+                    addMemoryError.classList.remove('hidden');
+                }
+                return;
+            }
+            closeQuickAddModal();
+            await doSearch();
+        });
+    }
+    function openEditModal(obs, item) {
+        const memoryId = item.id || obs.id || '';
+        state.editingMemoryId = memoryId;
+        if (editMemoryTitle) {
+            editMemoryTitle.value = obs.title || obs.subtitle || item.title || '';
+        }
+        if (editMemoryNarrative) {
+            editMemoryNarrative.value = obs.narrative || (Array.isArray(obs.facts) ? obs.facts.join('\n') : '') || item.narrative || item.text || item.content || '';
+        }
+        if (editMemoryCategory) {
+            editMemoryCategory.value = obs.category || item.category || obs.metadata?.category || item.metadata?.category || '';
+        }
+        if (editMemoryError) {
+            editMemoryError.classList.add('hidden');
+            editMemoryError.textContent = '';
+        }
+        if (editMemoryModal) {
+            editMemoryModal.classList.remove('hidden');
+        }
+        if (editMemoryNarrative && typeof editMemoryNarrative.focus === 'function') {
+            editMemoryNarrative.focus();
+        }
+    }
+    function closeEditModal() {
+        if (editMemoryModal)
+            editMemoryModal.classList.add('hidden');
+        state.editingMemoryId = null;
+        if (editMemoryError) {
+            editMemoryError.classList.add('hidden');
+            editMemoryError.textContent = '';
+        }
+    }
+    if (editMemoryCancelBtn)
+        editMemoryCancelBtn.addEventListener('click', closeEditModal);
+    if (editMemoryCloseBtn)
+        editMemoryCloseBtn.addEventListener('click', closeEditModal);
+    if (editMemorySaveBtn) {
+        editMemorySaveBtn.addEventListener('click', async () => {
+            if (!state.editingMemoryId)
+                return;
+            const title = editMemoryTitle ? editMemoryTitle.value.trim() : '';
+            const narrative = editMemoryNarrative ? editMemoryNarrative.value.trim() : '';
+            const category = editMemoryCategory ? editMemoryCategory.value.trim() : '';
+            if (!narrative) {
+                if (editMemoryError) {
+                    editMemoryError.textContent = 'Narrative is required';
+                    editMemoryError.classList.remove('hidden');
+                }
+                return;
+            }
+            if (editMemoryError)
+                editMemoryError.classList.add('hidden');
+            const res = await msg({
+                type: 'UPDATE_MEMORY',
+                id: state.editingMemoryId,
+                title: title || undefined,
+                narrative,
+                category: category || undefined,
+            });
+            if (!res || res.error || res.success === false) {
+                if (editMemoryError) {
+                    editMemoryError.textContent = res?.error || 'Failed to update memory';
+                    editMemoryError.classList.remove('hidden');
+                }
+                return;
+            }
+            closeEditModal();
+            await doSearch();
+        });
+    }
+    async function handleDeleteMemory(obs, item, cardStableId) {
+        const memoryId = item.id || obs.id;
+        if (!memoryId) {
+            console.warn('Cannot delete memory without valid ID');
+            return;
+        }
+        const confirmed = typeof confirm === 'function' ? confirm('Delete this memory?') : true;
+        if (!confirmed)
+            return;
+        const res = await msg({ type: 'DELETE_MEMORY', id: memoryId });
+        if (res && res.error) {
+            if (typeof alert === 'function') {
+                alert(`Error deleting memory: ${res.error}`);
+            }
+            return;
+        }
+        if (state.selectedMemories.has(cardStableId)) {
+            state.selectedMemories.delete(cardStableId);
+        }
+        if (item.id && state.selectedMemories.has(item.id)) {
+            state.selectedMemories.delete(item.id);
+        }
+        if (obs.id && state.selectedMemories.has(obs.id)) {
+            state.selectedMemories.delete(obs.id);
+        }
+        updateAttachBar();
+        await doSearch();
+    }
     function buildMemoryCard(item) {
         const obs = item.observation || item;
         const id = stableId(obs);
@@ -969,14 +1155,38 @@ async function initPopup() {
         card.tabIndex = 0;
         card.setAttribute('role', 'checkbox');
         card.setAttribute('aria-checked', 'false');
-        card.innerHTML = `
-      <div class="card-check">✓</div>
-      <div class="card-body">
-        <div class="result-title">${esc(title)}</div>
-        <div class="result-snippet">${esc(snippet)}</div>
-        ${meta ? `<div class="result-meta">${esc(meta)}</div>` : ''}
-      </div>
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'result-card-header';
+        const cardCheck = document.createElement('div');
+        cardCheck.className = 'card-check';
+        cardCheck.textContent = '✓';
+        cardHeader.appendChild(cardCheck);
+        const cardActions = document.createElement('div');
+        cardActions.className = 'card-actions';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'card-action-btn btn-edit-memory';
+        editBtn.type = 'button';
+        editBtn.title = 'Edit memory';
+        editBtn.setAttribute('aria-label', 'Edit memory');
+        editBtn.textContent = '✎';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'card-action-btn btn-delete-memory';
+        deleteBtn.type = 'button';
+        deleteBtn.title = 'Delete memory';
+        deleteBtn.setAttribute('aria-label', 'Delete memory');
+        deleteBtn.textContent = '🗑️';
+        cardActions.appendChild(editBtn);
+        cardActions.appendChild(deleteBtn);
+        cardHeader.appendChild(cardActions);
+        card.appendChild(cardHeader);
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        cardBody.innerHTML = `
+      <div class="result-title">${esc(title)}</div>
+      <div class="result-snippet">${esc(snippet)}</div>
+      ${meta ? `<div class="result-meta">${esc(meta)}</div>` : ''}
     `;
+        card.appendChild(cardBody);
         if (state.selectedMemories.has(id)) {
             card.classList.add('selected');
             card.setAttribute('aria-checked', 'true');
@@ -988,7 +1198,111 @@ async function initPopup() {
                 toggleCard(card, id, obs);
             }
         });
+        // Inline Card Actions with e.stopPropagation()
+        editBtn.addEventListener('click', (e) => {
+            if (e && typeof e.stopPropagation === 'function')
+                e.stopPropagation();
+            openEditModal(obs, item);
+        });
+        editBtn.addEventListener('keydown', (e) => {
+            if (e && typeof e.stopPropagation === 'function')
+                e.stopPropagation();
+            if (e.key === 'Enter' || e.key === ' ') {
+                if (e && typeof e.preventDefault === 'function')
+                    e.preventDefault();
+                openEditModal(obs, item);
+            }
+        });
+        deleteBtn.addEventListener('click', async (e) => {
+            if (e && typeof e.stopPropagation === 'function')
+                e.stopPropagation();
+            await handleDeleteMemory(obs, item, id);
+        });
+        deleteBtn.addEventListener('keydown', async (e) => {
+            if (e && typeof e.stopPropagation === 'function')
+                e.stopPropagation();
+            if (e.key === 'Enter' || e.key === ' ') {
+                if (e && typeof e.preventDefault === 'function')
+                    e.preventDefault();
+                await handleDeleteMemory(obs, item, id);
+            }
+        });
         return card;
+    }
+    // ---------------------------------------------------------------------------
+    // Full-Tab View & Theme Engine
+    // ---------------------------------------------------------------------------
+    let isTabView = false;
+    try {
+        if (typeof window !== 'undefined' && window.location) {
+            const search = window.location.search || '';
+            const href = window.location.href || '';
+            if (search.includes('view=tab') || href.includes('view=tab')) {
+                isTabView = true;
+            }
+            else if (typeof URLSearchParams !== 'undefined' && search) {
+                isTabView = new URLSearchParams(search).get('view') === 'tab';
+            }
+        }
+    }
+    catch {
+        // ignore
+    }
+    if (isTabView) {
+        if (typeof document !== 'undefined') {
+            if (document.documentElement)
+                document.documentElement.classList.add('tab-view');
+            if (document.body)
+                document.body.classList.add('tab-view');
+        }
+        if (expandTabBtn) {
+            expandTabBtn.classList.add('hidden');
+        }
+    }
+    if (expandTabBtn) {
+        expandTabBtn.addEventListener('click', () => {
+            const tabUrl = 'popup/popup.html?view=tab';
+            if (typeof chrome !== 'undefined' && chrome.tabs && typeof chrome.tabs.create === 'function') {
+                chrome.tabs.create({ url: tabUrl });
+            }
+            else if (typeof window !== 'undefined' && typeof window.open === 'function') {
+                window.open(tabUrl, '_blank');
+            }
+        });
+    }
+    function initTheme() {
+        if (typeof window === 'undefined')
+            return;
+        try {
+            if (window.matchMedia) {
+                const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                if (darkQuery.matches) {
+                    document.documentElement?.classList.add('theme-dark');
+                    document.documentElement?.setAttribute('data-theme', 'dark');
+                    document.body?.classList.add('theme-dark');
+                    document.body?.setAttribute('data-theme', 'dark');
+                }
+                if (darkQuery.addEventListener) {
+                    darkQuery.addEventListener('change', (e) => {
+                        if (e.matches) {
+                            document.documentElement?.classList.add('theme-dark');
+                            document.documentElement?.setAttribute('data-theme', 'dark');
+                            document.body?.classList.add('theme-dark');
+                            document.body?.setAttribute('data-theme', 'dark');
+                        }
+                        else {
+                            document.documentElement?.classList.remove('theme-dark');
+                            document.documentElement?.removeAttribute('data-theme');
+                            document.body?.classList.remove('theme-dark');
+                            document.body?.removeAttribute('data-theme');
+                        }
+                    });
+                }
+            }
+        }
+        catch {
+            // ignore
+        }
     }
     async function doSearch(forcedQuery = null) {
         if (!searchInput || !searchResults)
@@ -1044,6 +1358,9 @@ async function initPopup() {
     // ---------------------------------------------------------------------------
     // Boot sequence
     // ---------------------------------------------------------------------------
+    initTheme();
+    moduleBuildMemoryCard = buildMemoryCard;
+    moduleDoSearch = doSearch;
     await Promise.all([
         checkStatus(),
         loadSettings(),
@@ -1071,6 +1388,12 @@ if (typeof module !== 'undefined' && module.exports) {
         stableId,
         formatRelativeTime,
         formatPlatformName,
+        get buildMemoryCard() {
+            return moduleBuildMemoryCard;
+        },
+        get doSearch() {
+            return moduleDoSearch;
+        },
         initPopup,
     };
 }

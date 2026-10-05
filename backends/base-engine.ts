@@ -49,6 +49,53 @@ class BaseMemoryEngine {
   }
 
   /**
+   * Session lifecycle alias (draft session to permanent thread)
+   */
+  async aliasSession(sessionParams?: {
+    oldSessionId: string;
+    newSessionId: string;
+    platform?: string;
+    threadId?: string;
+    url?: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    return { ok: true };
+  }
+
+  /**
+   * Directly add a single memory
+   */
+  async addMemory(memory: {
+    title?: string;
+    narrative: string;
+    category?: string;
+    metadata?: Record<string, any>;
+  }): Promise<MemoryCrudResponse> {
+    throw new Error('BaseMemoryEngine.addMemory() must be implemented by subclass');
+  }
+
+  /**
+   * Update an existing memory by ID
+   */
+  async updateMemory(
+    id: string,
+    updates: {
+      title?: string;
+      narrative?: string;
+      category?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<MemoryCrudResponse> {
+    throw new Error('BaseMemoryEngine.updateMemory() must be implemented by subclass');
+  }
+
+  /**
+   * Delete an existing memory by ID
+   */
+  async deleteMemory(id: string): Promise<MemoryCrudResponse> {
+    throw new Error('BaseMemoryEngine.deleteMemory() must be implemented by subclass');
+  }
+
+  /**
    * Returns web dashboard / management console URL for this engine.
    */
   getDashboardUrl(): string {

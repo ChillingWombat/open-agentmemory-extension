@@ -165,6 +165,37 @@ export interface ExportLocalHistoryMessage {
   sessionId?: string;
 }
 
+export interface AddMemoryMessage {
+  type: 'ADD_MEMORY';
+  title?: string;
+  narrative: string;
+  category?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateMemoryMessage {
+  type: 'UPDATE_MEMORY';
+  id: string;
+  title?: string;
+  narrative?: string;
+  category?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface DeleteMemoryMessage {
+  type: 'DELETE_MEMORY';
+  id: string;
+}
+
+export interface SessionAliasMessage {
+  type: 'SESSION_ALIAS';
+  oldSessionId: string;
+  newSessionId: string;
+  platform?: string;
+  threadId?: string;
+  url?: string;
+}
+
 export type BackgroundMessage =
   | ObserveMessage
   | SearchMessage
@@ -179,7 +210,11 @@ export type BackgroundMessage =
   | GetLocalSessionDetailsMessage
   | DeleteLocalSessionMessage
   | ClearLocalHistoryMessage
-  | ExportLocalHistoryMessage;
+  | ExportLocalHistoryMessage
+  | AddMemoryMessage
+  | UpdateMemoryMessage
+  | DeleteMemoryMessage
+  | SessionAliasMessage;
 
 // -----------------------------------------------------------------------------
 // Background Responses
@@ -212,6 +247,21 @@ export interface StatusResponse {
 export interface ExportHistoryResponse {
   data: string;
   filename: string;
+  error?: string;
+}
+
+export interface MemoryCrudResponse {
+  success: boolean;
+  id?: string;
+  error?: string;
+  status?: number;
+}
+
+export interface SessionAliasResponse {
+  success: boolean;
+  oldSessionId: string;
+  newSessionId: string;
+  turnCount?: number;
   error?: string;
 }
 
@@ -337,6 +387,52 @@ declare global {
     error?: string;
   }
 
+  interface AddMemoryMessage {
+    type: 'ADD_MEMORY';
+    title?: string;
+    narrative: string;
+    category?: string;
+    metadata?: Record<string, any>;
+  }
+
+  interface UpdateMemoryMessage {
+    type: 'UPDATE_MEMORY';
+    id: string;
+    title?: string;
+    narrative?: string;
+    category?: string;
+    metadata?: Record<string, any>;
+  }
+
+  interface DeleteMemoryMessage {
+    type: 'DELETE_MEMORY';
+    id: string;
+  }
+
+  interface SessionAliasMessage {
+    type: 'SESSION_ALIAS';
+    oldSessionId: string;
+    newSessionId: string;
+    platform?: string;
+    threadId?: string;
+    url?: string;
+  }
+
+  interface MemoryCrudResponse {
+    success: boolean;
+    id?: string;
+    error?: string;
+    status?: number;
+  }
+
+  interface SessionAliasResponse {
+    success: boolean;
+    oldSessionId: string;
+    newSessionId: string;
+    turnCount?: number;
+    error?: string;
+  }
+
   interface PlatformConfig {
     platform: string;
     conversationSelectors: string[];
@@ -360,5 +456,9 @@ declare global {
     | GetLocalSessionDetailsMessage
     | DeleteLocalSessionMessage
     | ClearLocalHistoryMessage
-    | ExportLocalHistoryMessage;
+    | ExportLocalHistoryMessage
+    | AddMemoryMessage
+    | UpdateMemoryMessage
+    | DeleteMemoryMessage
+    | SessionAliasMessage;
 }

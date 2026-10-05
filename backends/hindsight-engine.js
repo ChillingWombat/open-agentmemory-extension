@@ -319,6 +319,154 @@ class HindsightEngine extends BaseEngineClassForHindsight {
         return { ok: true };
     }
     /**
+     * Adds a memory directly via POST /retain (fallback POST /api/v1/retain).
+     */
+    async addMemory({ title = '', narrative = '', category = '', metadata = {} }) {
+        try {
+            const payload = {
+                bank_id: this.bankId || 'default',
+                content: narrative,
+                text: narrative,
+                title: title || 'Manual Memory',
+                context: {
+                    category: category || 'manual',
+                    source: 'manual_popup',
+                    timestamp: new Date().toISOString(),
+                },
+                metadata: {
+                    title: title || 'Manual Memory',
+                    category: category || 'manual',
+                    source: 'manual_popup',
+                    timestamp: new Date().toISOString(),
+                    ...metadata,
+                },
+            };
+            let url = this._resolveEndpoint('retain');
+            let res = await fetch(url, {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(this.timeout),
+            }).catch(() => null);
+            if (!res || (!res.ok && res.status === 404)) {
+                url = this._resolveEndpoint('api/v1/retain');
+                const fallbackRes = await fetch(url, {
+                    method: 'POST',
+                    headers: this._headers(),
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(this.timeout),
+                }).catch(() => null);
+                if (fallbackRes)
+                    res = fallbackRes;
+            }
+            if (!res) {
+                return { success: false, error: 'Failed to connect to Hindsight service' };
+            }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return {
+                    success: false,
+                    error: data.message || data.error || `Hindsight returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true, id: String(data.id || data.memory_id || `hindsight_${Date.now()}`) };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
+     * Updates a memory via PUT /memories/:id (fallback PUT /api/v1/memories/:id).
+     */
+    async updateMemory(id, updates) {
+        try {
+            const payload = {
+                bank_id: this.bankId || 'default',
+                content: updates.narrative,
+                text: updates.narrative,
+                title: updates.title || '',
+                metadata: {
+                    title: updates.title,
+                    category: updates.category,
+                    ...updates.metadata,
+                },
+            };
+            let url = `${this._resolveEndpoint('memories')}/${encodeURIComponent(id)}`;
+            let res = await fetch(url, {
+                method: 'PUT',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(this.timeout),
+            }).catch(() => null);
+            if (!res || (!res.ok && res.status === 404)) {
+                url = `${this._resolveEndpoint('api/v1/memories')}/${encodeURIComponent(id)}`;
+                const fallbackRes = await fetch(url, {
+                    method: 'PUT',
+                    headers: this._headers(),
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(this.timeout),
+                }).catch(() => null);
+                if (fallbackRes)
+                    res = fallbackRes;
+            }
+            if (!res) {
+                return { success: false, error: 'Failed to connect to Hindsight service' };
+            }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return {
+                    success: false,
+                    error: data.message || data.error || `Hindsight returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true, id };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
+     * Deletes a memory via DELETE /memories/:id?bank_id=... (fallback DELETE /api/v1/memories/:id?bank_id=...).
+     */
+    async deleteMemory(id) {
+        try {
+            const bankParam = encodeURIComponent(this.bankId || 'default');
+            let url = `${this._resolveEndpoint('memories')}/${encodeURIComponent(id)}?bank_id=${bankParam}`;
+            let res = await fetch(url, {
+                method: 'DELETE',
+                headers: this._headers(),
+                signal: AbortSignal.timeout(this.timeout),
+            }).catch(() => null);
+            if (!res || (!res.ok && res.status === 404)) {
+                url = `${this._resolveEndpoint('api/v1/memories')}/${encodeURIComponent(id)}?bank_id=${bankParam}`;
+                const fallbackRes = await fetch(url, {
+                    method: 'DELETE',
+                    headers: this._headers(),
+                    signal: AbortSignal.timeout(this.timeout),
+                }).catch(() => null);
+                if (fallbackRes)
+                    res = fallbackRes;
+            }
+            if (!res) {
+                return { success: false, error: 'Failed to connect to Hindsight service' };
+            }
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                return {
+                    success: false,
+                    error: data.message || data.error || `Hindsight returned HTTP ${res.status}`,
+                    status: res.status,
+                };
+            }
+            return { success: true };
+        }
+        catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    /**
      * Returns dashboard URL
      */
     getDashboardUrl() {

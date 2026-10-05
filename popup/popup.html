@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Open AgentMemory</title>
+  <title>WebAI Memory</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -11,10 +11,11 @@
   <div class="header">
     <div class="header-row">
       <div class="logo">
-        <span class="logo-text">Open AgentMemory</span>
+        <span class="logo-icon"><img src="../icons/icon-48.png" width="20" height="20" alt="WebAI Memory" style="display:block; border-radius: 4px;"></span>
+        <span class="logo-text">WebAI Memory</span>
       </div>
       <div class="header-actions">
-        <a id="dashboard-link" href="http://localhost:3111" target="_blank" title="Open AgentMemory Dashboard" class="icon-btn">
+        <a id="dashboard-link" href="http://localhost:8000" target="_blank" title="Dashboard Console" class="icon-btn" aria-label="Open Dashboard">
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="9" rx="1"></rect>
             <rect x="14" y="3" width="7" height="5" rx="1"></rect>
@@ -22,22 +23,24 @@
             <rect x="3" y="16" width="7" height="5" rx="1"></rect>
           </svg>
         </a>
-        <div id="status-badge" class="status-badge">
+        <div id="status-badge" class="status-badge checking" role="status" aria-live="polite">
           <span class="status-dot"></span>
           <span id="status-text">Checking…</span>
         </div>
       </div>
     </div>
-    <p class="subtitle" id="api-url-display">localhost:3111</p>
+    <p class="subtitle" id="api-url-display">Mem0 · localhost:8000</p>
   </div>
 
   <!-- Offline Banner -->
   <div id="offline-banner" class="offline-banner hidden">
-    <h3>Daemon is offline</h3>
-    <p>Please start your local AgentMemory daemon in your terminal. You can run the installed app or use npx:</p>
-    <div class="code-block">
-      <code>agentmemory</code>
-      <button id="copy-cmd-btn" title="Copy to clipboard" aria-label="Copy daemon command">📋</button>
+    <div class="offline-banner-content">
+      <div class="offline-title" id="offline-title">Engine is offline</div>
+      <p id="offline-hint" class="offline-hint">Unable to connect to the memory engine.</p>
+      <div class="code-block hidden" id="daemon-code-block">
+        <code>agentmemory</code>
+        <button id="copy-cmd-btn" title="Copy to clipboard" aria-label="Copy daemon command">📋</button>
+      </div>
     </div>
   </div>
 
@@ -48,58 +51,204 @@
       <span id="queue-label">0 memories queued</span>
       <button id="queue-clear-btn" class="queue-clear-btn" title="Clear queue" aria-label="Clear queued memories">✕</button>
     </div>
-    <p class="queue-hint">Will be sent with your next prompt. Open the AI chat tab and type away.</p>
+    <p class="queue-hint">Will be prepended to your next prompt in AI chat.</p>
   </div>
 
-  <!-- Tab Navigation -->
-  <div class="tabs">
-    <button class="tab active" data-tab="search">Search</button>
-    <button class="tab" data-tab="recent">Recent</button>
-    <button class="tab" data-tab="settings">Settings</button>
+  <!-- 3-Tab Navigation -->
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="memories" role="tab" aria-selected="true" id="tab-btn-memories">Memories</button>
+    <button class="tab" data-tab="history" role="tab" aria-selected="false" id="tab-btn-history">Local History</button>
+    <button class="tab" data-tab="settings" role="tab" aria-selected="false" id="tab-btn-settings">Settings</button>
   </div>
 
-  <!-- Search Tab -->
-  <div class="tab-panel active" id="tab-search">
+  <!-- Tab 1: Memories -->
+  <div class="tab-panel active" id="tab-memories" role="tabpanel" aria-labelledby="tab-btn-memories">
     <div class="search-box">
-      <input type="text" id="search-input" placeholder="Search your memories…" autocomplete="off">
-      <button id="search-btn" title="Search" aria-label="Search memories">→</button>
+      <input type="text" id="search-input" placeholder="Search recalled memories…" autocomplete="off">
+      <button id="search-btn" title="Recall memories" aria-label="Search memories">Recall</button>
     </div>
-    <div id="search-results" class="results-list"></div>
+    <div id="search-results" class="results-list">
+      <div class="hint-text">Search past memories across your AI sessions</div>
+    </div>
   </div>
 
-  <!-- Recent Tab -->
-  <div class="tab-panel" id="tab-recent">
-    <p class="hint-text">Recent conversation memories</p>
-    <div id="recent-results" class="results-list"></div>
+  <!-- Tab 2: Local History -->
+  <div class="tab-panel" id="tab-history" role="tabpanel" aria-labelledby="tab-btn-history">
+    <!-- Search Transcripts -->
+    <div class="search-box">
+      <input type="text" id="history-search-input" placeholder="Search conversation transcripts…" autocomplete="off">
+      <button id="history-search-btn" title="Search transcripts" aria-label="Search transcripts">Search</button>
+    </div>
+
+    <!-- Platform Filter Pills -->
+    <div class="filter-pills" id="platform-filters">
+      <button class="pill active" data-platform="all">All</button>
+      <button class="pill" data-platform="aistudio">AI Studio</button>
+      <button class="pill" data-platform="gemini">Gemini</button>
+      <button class="pill" data-platform="chatgpt">ChatGPT</button>
+      <button class="pill" data-platform="claude">Claude</button>
+      <button class="pill" data-platform="grok">Grok</button>
+    </div>
+
+    <!-- History Actions Bar -->
+    <div class="history-actions-bar">
+      <span id="history-count-label" class="history-count">0 sessions</span>
+      <div class="history-btn-group">
+        <button id="history-export-btn" class="btn-sm" title="Export local history as JSON">Export JSON</button>
+        <button id="history-clear-btn" class="btn-sm btn-danger" title="Clear all local history">Clear History</button>
+      </div>
+    </div>
+
+    <!-- Sessions List View -->
+    <div id="history-sessions-list" class="sessions-list">
+      <div class="loading-text">Loading sessions…</div>
+    </div>
+
+    <!-- Session Detail View (hidden by default) -->
+    <div id="session-detail-view" class="session-detail-view hidden">
+      <div class="detail-header">
+        <button id="detail-back-btn" class="btn-back" title="Back to session list">← Back</button>
+        <div class="detail-meta">
+          <span id="detail-platform-badge" class="platform-badge"></span>
+          <span id="detail-session-title" class="detail-title"></span>
+        </div>
+        <button id="detail-delete-btn" class="btn-icon-danger" title="Delete this session" aria-label="Delete session">🗑️</button>
+      </div>
+      <div id="detail-turns-container" class="turns-container"></div>
+    </div>
   </div>
 
-  <!-- Settings Tab -->
-  <div class="tab-panel" id="tab-settings">
+  <!-- Tab 3: Settings -->
+  <div class="tab-panel" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
+    <!-- Engine Switcher -->
     <div class="settings-group">
-      <h3 class="settings-heading">Auto-save</h3>
+      <h3 class="settings-heading">Active Memory Engine</h3>
+      <div class="engine-selector">
+        <label class="engine-option" for="engine-mem0-selfhosted">
+          <input type="radio" name="engine" value="mem0-selfhosted" id="engine-mem0-selfhosted" checked>
+          <div class="engine-card">
+            <span class="engine-name">Local Mem0</span>
+            <span class="engine-desc">Local instance (localhost:8000)</span>
+          </div>
+        </label>
+        <label class="engine-option" for="engine-mem0-cloud">
+          <input type="radio" name="engine" value="mem0-cloud" id="engine-mem0-cloud">
+          <div class="engine-card">
+            <span class="engine-name">Mem0 Cloud</span>
+            <span class="engine-desc">Managed API (api.mem0.ai/v1)</span>
+          </div>
+        </label>
+        <label class="engine-option" for="engine-agentmemory">
+          <input type="radio" name="engine" value="agentmemory" id="engine-agentmemory">
+          <div class="engine-card">
+            <span class="engine-name">AgentMemory</span>
+            <span class="engine-desc">Local daemon (localhost:3111)</span>
+          </div>
+        </label>
+        <label class="engine-option" for="engine-hindsight">
+          <input type="radio" name="engine" value="hindsight" id="engine-hindsight">
+          <div class="engine-card">
+            <span class="engine-name">Hindsight</span>
+            <span class="engine-desc">Local service (localhost:8888)</span>
+          </div>
+        </label>
+        <label class="engine-option" for="engine-cognee">
+          <input type="radio" name="engine" value="cognee" id="engine-cognee">
+          <div class="engine-card">
+            <span class="engine-name">Cognee</span>
+            <span class="engine-desc">Graph engine (localhost:8000)</span>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Mem0 Fields (visible by default) -->
+    <div id="mem0-fields" class="settings-group engine-fields-group">
+      <h3 class="settings-heading">Mem0 Configuration</h3>
+      <div id="mem0-url-container">
+        <label class="field-label" for="mem0-api-url">Mem0 API Endpoint</label>
+        <input type="url" id="mem0-api-url" class="text-input" value="http://localhost:8000" spellcheck="false">
+      </div>
+      <label class="field-label" for="mem0-api-key">Mem0 API Key</label>
+      <input type="password" id="mem0-api-key" class="text-input" autocomplete="off" placeholder="m0-... (optional for local Mem0)">
+      <label class="field-label" for="mem0-user-id">User ID</label>
+      <input type="text" id="mem0-user-id" class="text-input" value="default_user" placeholder="default_user">
+      <div class="two-col-inputs">
+        <div>
+          <label class="field-label" for="mem0-org-id">Org ID (optional)</label>
+          <input type="text" id="mem0-org-id" class="text-input" placeholder="org_...">
+        </div>
+        <div>
+          <label class="field-label" for="mem0-project-id">Project ID (optional)</label>
+          <input type="text" id="mem0-project-id" class="text-input" placeholder="proj_...">
+        </div>
+      </div>
+    </div>
+
+    <!-- AgentMemory Fields (hidden by default) -->
+    <div id="agentmemory-fields" class="settings-group engine-fields-group hidden">
+      <h3 class="settings-heading">AgentMemory Configuration</h3>
+      <label class="field-label" for="api-url">AgentMemory URL</label>
+      <input type="url" id="api-url" class="text-input" value="http://localhost:3111" spellcheck="false">
+      <label class="field-label" for="api-secret">Bearer Secret (optional)</label>
+      <input type="password" id="api-secret" class="text-input" autocomplete="off" placeholder="AGENTMEMORY_SECRET">
+    </div>
+
+    <!-- Hindsight Fields (hidden by default) -->
+    <div id="hindsight-fields" class="settings-group engine-fields-group hidden">
+      <h3 class="settings-heading">Hindsight Configuration</h3>
+      <label class="field-label" for="hindsight-api-url">Hindsight API Endpoint</label>
+      <input type="url" id="hindsight-api-url" class="text-input" value="http://localhost:8888" spellcheck="false">
+      <label class="field-label" for="hindsight-api-key">API Key (optional)</label>
+      <input type="password" id="hindsight-api-key" class="text-input" autocomplete="off" placeholder="Bearer token (optional)">
+      <label class="field-label" for="hindsight-bank-id">Bank ID</label>
+      <input type="text" id="hindsight-bank-id" class="text-input" value="default" placeholder="default">
+    </div>
+
+    <!-- Cognee Fields (hidden by default) -->
+    <div id="cognee-fields" class="settings-group engine-fields-group hidden">
+      <h3 class="settings-heading">Cognee Configuration</h3>
+      <label class="field-label" for="cognee-api-url">Cognee API Endpoint</label>
+      <input type="url" id="cognee-api-url" class="text-input" value="http://localhost:8000" spellcheck="false">
+      <label class="field-label" for="cognee-api-key">API Key (optional)</label>
+      <input type="password" id="cognee-api-key" class="text-input" autocomplete="off" placeholder="Bearer token (optional)">
+      <label class="field-label" for="cognee-dataset-name">Dataset Name</label>
+      <input type="text" id="cognee-dataset-name" class="text-input" value="main" placeholder="main">
+    </div>
+
+    <!-- Platform Auto-Save Toggles -->
+    <div class="settings-group">
+      <h3 class="settings-heading">Platform Auto-Save</h3>
       <div class="toggle-row">
-        <a class="toggle-label" href="https://gemini.google.com" target="_blank" rel="noopener noreferrer">Gemini</a>
+        <a class="toggle-label" href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
+        <label class="switch">
+          <input type="checkbox" id="aistudio-save" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <a class="toggle-label" href="https://gemini.google.com" target="_blank" rel="noopener noreferrer">Google Gemini</a>
         <label class="switch">
           <input type="checkbox" id="gemini-save" checked>
           <span class="slider"></span>
         </label>
       </div>
       <div class="toggle-row">
-        <a class="toggle-label" href="https://chatgpt.com" target="_blank" rel="noopener noreferrer">ChatGPT</a>
+        <a class="toggle-label" href="https://chatgpt.com" target="_blank" rel="noopener noreferrer">OpenAI ChatGPT</a>
         <label class="switch">
           <input type="checkbox" id="chatgpt-save" checked>
           <span class="slider"></span>
         </label>
       </div>
       <div class="toggle-row">
-        <a class="toggle-label" href="https://claude.ai" target="_blank" rel="noopener noreferrer">Claude</a>
+        <a class="toggle-label" href="https://claude.ai" target="_blank" rel="noopener noreferrer">Anthropic Claude</a>
         <label class="switch">
           <input type="checkbox" id="claude-save" checked>
           <span class="slider"></span>
         </label>
       </div>
       <div class="toggle-row">
-        <a class="toggle-label" href="https://grok.com" target="_blank" rel="noopener noreferrer">Grok</a>
+        <a class="toggle-label" href="https://grok.com" target="_blank" rel="noopener noreferrer">xAI Grok</a>
         <label class="switch">
           <input type="checkbox" id="grok-save" checked>
           <span class="slider"></span>
@@ -107,8 +256,29 @@
       </div>
     </div>
 
+    <!-- Local Conversation Archive Settings -->
     <div class="settings-group">
-      <h3 class="settings-heading">Misc</h3>
+      <h3 class="settings-heading">Local Conversation Archive</h3>
+      <div class="toggle-row">
+        <span class="toggle-label static-label">Enable local archiving</span>
+        <label class="switch">
+          <input type="checkbox" id="local-archive-enabled" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="archive-hint">Preserves full conversation turns in local client storage for zero-retention privacy.</p>
+      <div class="archive-management-row">
+        <span id="archive-stats" class="archive-stats">Preserved: 0 sessions</span>
+        <div class="archive-actions">
+          <button id="settings-export-history-btn" class="btn-sm" title="Export local history as JSON">Export JSON</button>
+          <button id="settings-clear-history-btn" class="btn-sm btn-danger" title="Clear all local history">Clear History</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preferences -->
+    <div class="settings-group">
+      <h3 class="settings-heading">Preferences</h3>
       <div class="toggle-row">
         <label class="toggle-label static-label" for="show-notifications">Show save notifications</label>
         <label class="switch">
@@ -118,14 +288,11 @@
       </div>
     </div>
 
+    <!-- Save & Test Connection -->
     <div class="settings-group">
-      <h3 class="settings-heading">API</h3>
-      <label class="field-label" for="api-url">AgentMemory URL</label>
-      <input type="url" id="api-url" class="text-input" value="http://localhost:3111" spellcheck="false">
-      <label class="field-label" for="api-secret">Bearer secret (optional)</label>
-      <input type="password" id="api-secret" class="text-input" autocomplete="off" placeholder="AGENTMEMORY_SECRET">
+      <p id="settings-feedback" class="settings-feedback hidden" role="status"></p>
       <p id="settings-error" class="settings-error hidden" role="alert"></p>
-      <button id="save-settings" class="btn-save">Save &amp; Reconnect</button>
+      <button id="save-settings" class="btn-save">Save &amp; Test Connection</button>
     </div>
   </div>
 
@@ -135,6 +302,7 @@
     <button id="attach-btn" class="btn-attach">📎 Queue for next prompt</button>
   </div>
 
+  <script src="../backends/local-archive.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

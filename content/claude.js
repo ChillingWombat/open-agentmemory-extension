@@ -1,4 +1,4 @@
-// Open AgentMemory - Claude adapter
+// WebAI Memory - Claude adapter
 
 /* global OAM */
 

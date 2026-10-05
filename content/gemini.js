@@ -1,4 +1,4 @@
-// Open AgentMemory - Gemini adapter
+// WebAI Memory - Gemini adapter
 
 /* global OAM */
 

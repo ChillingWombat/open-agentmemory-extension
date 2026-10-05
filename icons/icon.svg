@@ -1,24 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- White background, black border for the browser -->
-  <rect x="4" y="16" width="120" height="96" rx="12" fill="#ffffff" stroke="#18181b" stroke-width="8"/>
-  <line x1="4" y1="40" x2="124" y2="40" stroke="#18181b" stroke-width="8"/>
-  
-  <circle cx="20" cy="28" r="4" fill="#18181b"/>
-  <circle cx="36" cy="28" r="4" fill="#18181b"/>
-  
-  <!-- Extremely simplified brain (cloud-like with a center split) -->
-  <g stroke="#18181b" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Left half -->
-    <path d="M 60 52 
-             C 45 45, 25 55, 30 75
-             C 20 95, 45 105, 55 95
-             C 50 85, 55 70, 60 65" />
-    <!-- Right half -->
-    <path d="M 68 52 
-             C 83 45, 103 55, 98 75
-             C 108 95, 83 105, 73 95
-             C 78 85, 73 70, 68 65" />
-    <!-- Center stem -->
-    <line x1="64" y1="65" x2="64" y2="105"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <filter id="card-shadow" x="-12%" y="-12%" width="124%" height="128%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#3c4043" flood-opacity="0.15" />
+    </filter>
+    <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4285F4" />
+      <stop offset="35%" stop-color="#9B72CB" />
+      <stop offset="70%" stop-color="#D96570" />
+      <stop offset="100%" stop-color="#1A73E8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Google-style Card Canvas -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#FFFFFF" filter="url(#card-shadow)" />
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="none" stroke="#E8EAED" stroke-width="1.5" />
+
+  <!-- Four Intersecting Memory Arcs / Google Colors -->
+  <!-- Top Arc (Blue) - Neural Memory Input -->
+  <path d="M 42 36 C 54 26, 74 26, 86 36 C 92 41, 88 50, 80 50 C 74 50, 68 44, 64 42 C 60 44, 54 50, 48 50 C 40 50, 36 41, 42 36 Z" fill="#4285F4" />
+
+  <!-- Left Brain Hemisphere / Loop (Green) -->
+  <path d="M 34 50 C 24 58, 24 74, 34 84 C 42 92, 52 86, 52 78 C 52 72, 46 66, 44 62 C 46 58, 50 54, 48 50 C 46 46, 38 46, 34 50 Z" fill="#34A853" />
+
+  <!-- Right Brain Hemisphere / Loop (Red) -->
+  <path d="M 94 50 C 104 58, 104 74, 94 84 C 86 92, 76 86, 76 78 C 76 72, 82 66, 84 62 C 82 58, 78 54, 80 50 C 82 46, 90 46, 94 50 Z" fill="#EA4335" />
+
+  <!-- Bottom Loop / Archive Storage (Yellow) -->
+  <path d="M 48 84 C 54 94, 74 94, 80 84 C 86 76, 78 72, 72 74 C 68 76, 64 78, 64 78 C 64 78, 60 76, 56 74 C 50 72, 42 76, 48 84 Z" fill="#FBBC04" />
+
+  <!-- Center AI Sparkle Star (Google Gemini / WebAI Core) -->
+  <path d="M 64 36 C 64 50, 78 64, 92 64 C 78 64, 64 78, 64 92 C 64 78, 50 64, 36 64 C 50 64, 64 50, 64 36 Z" fill="url(#geminiGrad)" />
+
+  <!-- Synaptic Memory Nodes (Crisp White with Google Color Borders) -->
+  <circle cx="64" cy="64" r="6.5" fill="#FFFFFF" stroke="#4285F4" stroke-width="2.5" />
+  <circle cx="42" cy="42" r="4" fill="#4285F4" />
+  <circle cx="86" cy="42" r="4" fill="#EA4335" />
+  <circle cx="34" cy="70" r="4" fill="#34A853" />
+  <circle cx="94" cy="70" r="4" fill="#EA4335" />
+  <circle cx="64" cy="86" r="4" fill="#FBBC04" />
 </svg>

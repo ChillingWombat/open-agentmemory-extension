@@ -1,182 +1,92 @@
-# Open AgentMemory
+# WebAI Memory
 
-A Chromium extension that connects ChatGPT, Claude, Gemini, and Grok to a
-locally running [AgentMemory](https://github.com/rohitg00/agentmemory) daemon.
+A small browser extension that saves your chats from AI web interfaces—Gemini, Google AI Studio, ChatGPT, Claude, and Grok—and connects them to a memory engine like [Mem0](https://mem0.ai) or [AgentMemory](https://github.com/rohitg00/agentmemory).
 
-The extension captures completed user/assistant exchanges, lets you search the
-same memory store from its popup, and can prepend selected memories to your next
-web prompt. Local coding agents connected to that AgentMemory daemon can recall
-the same conversations.
+### Why use this?
 
-## Features
+If you turn off history or activity tracking on services like Gemini (for example, to stop providers from retaining your data or training models on it), their web apps stop saving your past chats.
 
-- Automatically saves completed conversation turns per supported provider.
-- Searches AgentMemory without leaving the active browser tab.
-- Queues selected memories and visibly prepends them to the next prompt.
-- Enables or disables capture independently for each provider.
-- Shows daemon connectivity and queued-memory count in the extension badge.
-- Supports `AGENTMEMORY_SECRET` bearer authentication.
-- Keeps API access restricted to `localhost` and `127.0.0.1`.
+This extension keeps a copy saved locally on your own machine. You get the privacy benefits of turning off cloud history without losing track of your conversations.
 
-## Supported Sites
+If you also run a memory engine (Mem0 or AgentMemory), it sends the dialogue turns there too, so you can search past memories and inject them into future prompts.
 
-| Provider | Site |
-| --- | --- |
-| ChatGPT | `chatgpt.com`, `chat.openai.com` |
-| Claude | `claude.ai` |
-| Gemini | `gemini.google.com` |
-| Grok | `grok.com` |
+---
 
-These sites change their DOM periodically. If capture or prompt injection stops
-working after a site update, its selector list in `content/<provider>.js` may
-need adjustment.
+## What it does
 
-## Requirements
+- **Keeps a local history**: Saves your chats in your browser (`chrome.storage.local`). You can read past sessions, search transcripts, and export them to Markdown or JSON anytime.
+- **Works with memory engines**: Supports **Mem0** (cloud or self-hosted) and local **AgentMemory** daemons.
+- **Supports popular AI chats**:
+  - Google Gemini (`gemini.google.com`)
+  - Google AI Studio (`aistudio.google.com`)
+  - ChatGPT (`chatgpt.com`, `chat.openai.com`)
+  - Claude (`claude.ai`)
+  - Grok (`grok.com`)
+- **Memory recall**: Search your memories from the popup and queue relevant notes to prepend to your next prompt.
+- **Per-site toggles**: Turn auto-save on or off for each site independently.
 
-- A Chromium-based browser such as Chrome, Edge, Brave, or Arc.
-- Node.js 20 or newer for AgentMemory.
-- A local AgentMemory daemon.
+---
 
-## Installation
+## Quick Start
 
-### 1. Start AgentMemory
+### 1. Load the extension in your browser
 
-Run the daemon in a separate terminal:
+1. Clone or download this repo.
+2. Open `chrome://extensions` in Chrome, Brave, Edge, or any Chromium browser.
+3. Turn on **Developer mode** (top right switch).
+4. Click **Load unpacked** and select this project folder.
 
-```bash
-npx -y @agentmemory/agentmemory@latest
-```
+### 2. Choose your memory setup (optional)
 
-The REST API defaults to `http://localhost:3111`. Confirm it is healthy:
+Click the extension icon and open the **Settings** tab:
 
-```bash
-curl http://localhost:3111/agentmemory/health
-```
+- **Local Mem0** *(Default)*:
+  - Connects automatically to your local Mem0 server/console at `http://localhost:8000` with zero configuration needed.
+- **Mem0 Cloud**:
+  - Select **Mem0 Cloud**, leave the endpoint as `https://api.mem0.ai/v1`, and paste your API key.
+- **AgentMemory**:
+  - Connects to a local loopback daemon (`http://localhost:3111`). Enter your bearer secret if configured.
+- **Hindsight**:
+  - Connects to a local Hindsight agent memory service at `http://localhost:8888`.
+- **Cognee**:
+  - Connects to a local Cognee knowledge graph memory service at `http://localhost:8000`.
+- **Local Archive Only**:
+  - Even if no memory daemon is running, full conversation turns are safely archived client-side in your browser for zero-retention privacy.
 
-The AgentMemory viewer is normally available at
-`http://localhost:3113`.
+Click **Save & Test Connection** to verify.
 
-### 2. Load the Extension
+---
 
-1. Clone or download this repository.
-2. Open `chrome://extensions`.
-3. Enable **Developer mode**.
-4. Select **Load unpacked**.
-5. Choose this repository's root directory.
+## How to use it
 
-Pin Open AgentMemory from the browser toolbar for quick access.
+1. **Chat as usual**: Open Gemini, Google AI Studio, ChatGPT, Claude, or Grok. Once the assistant finishes its reply, the exchange is saved.
+2. **Review past chats**: Click the extension icon and open **Local History**. Click any conversation to view the full dialogue, or search keywords across all past sessions.
+3. **Bring past context into a prompt**:
+   - In the popup, go to **Memories** and search a topic.
+   - Select the notes you want and click **Queue for next prompt**.
+   - Back in your chat tab, your selected context will be added to your input box before sending.
 
-## Usage
+---
 
-### Capture Conversations
+## Privacy
 
-Open a supported AI site and chat normally. After both the user prompt and
-assistant response are present in the page, the extension sends the pair to the
-local daemon as a `prompt_submit` observation.
+- Your conversation archive stays in your browser's local storage.
+- If you use AgentMemory, network calls only go to your local machine (`localhost` / `127.0.0.1`).
+- If you use Mem0 Cloud, memories are sent to `api.mem0.ai` using your own API key.
+- The extension does not collect analytics or route your data through any third-party relay.
 
-Capture is enabled by default for every provider. Use **Settings > Auto-save**
-to disable individual sites. Save notifications are optional and disabled by
-default.
+---
 
-### Recall Memories
+## Notes & Development
 
-1. Open the extension popup.
-2. Search for relevant past work.
-3. Select one or more results.
-4. Choose **Queue for next prompt**.
-5. Return to a supported chat and send your next prompt.
-
-Queued context is inserted into the prompt before it is sent. It is visible in
-the editor and is therefore also sent to that AI provider.
-
-### Configure the Daemon
-
-The default API URL is `http://localhost:3111`. The extension accepts loopback
-HTTP URLs on any port.
-
-If the daemon uses `AGENTMEMORY_SECRET`, enter the same value under
-**Settings > API > Bearer secret**. The secret is stored in
-`chrome.storage.local` and attached only to requests sent to the configured
-loopback daemon.
-
-## Privacy and Permissions
-
-Open AgentMemory does not send data to a service operated by this extension.
-Conversation captures and searches are sent from the browser extension to the
-configured local AgentMemory API.
-
-The extension requests:
-
-- `storage`: settings and one queued context payload.
-- `alarms`: periodic daemon health checks.
-- Loopback host access: AgentMemory REST requests on `localhost` or
-  `127.0.0.1`.
-- Content-script access to the four supported AI sites.
-
-Remember that queued context becomes part of the prompt sent to the selected AI
-provider. Review sensitive memories before attaching them.
-
-## Architecture
-
-```text
-Supported AI page
-  -> provider adapter (selectors only)
-  -> shared content runtime
-  -> extension service worker
-  -> AgentMemory REST API on localhost
-
-Extension popup
-  -> search memories
-  -> queue selected context in chrome.storage.session
-  -> shared content runtime prepends it to the next prompt
-```
-
-`content/shared.js` owns capture, deduplication, session lifecycle,
-queued-context injection, and SPA navigation. Provider files contain only the
-DOM selectors needed for each site.
-
-## Development
-
-There is no build step. After editing the source, reload the unpacked extension
-from `chrome://extensions`.
-
-Run the dependency-free service-worker tests with:
-
-```bash
-npm test
-```
-
-Run syntax checks directly with Node:
-
-```bash
-node --check service-worker.js
-node --check content/shared.js
-node --check popup/popup.js
-```
-
-## Troubleshooting
-
-### The badge shows `!`
-
-- Confirm AgentMemory is running.
-- Open `http://localhost:3111/agentmemory/health`.
-- Check the API URL and bearer secret in extension settings.
-- Reload the extension after changing `manifest.json`.
-
-### Conversations are not being saved
-
-- Confirm auto-save is enabled for the current provider.
-- Wait until the assistant response has finished rendering.
-- Reload the AI page and inspect the extension's service-worker console.
-- Check whether the provider changed its page markup.
-
-### Queued context is not inserted
-
-- Queue the memory before sending the prompt.
-- Confirm the queue banner is visible on the AI page.
-- Reload the extension and the AI page after updating content scripts.
-
-### The dashboard button opens the wrong port
-
-The extension assumes the AgentMemory viewer uses port `3113`. If your viewer
-uses another port, open it directly in the browser.
+- **DOM Selectors**: These web interfaces update their layouts from time to time. If saving stops working on a site, check the selectors in `content/<site>.js`.
+- **Run tests**:
+  ```bash
+  npm test
+  ```
+  Runs the built-in test suite (no extra npm packages needed).
+- **Check syntax**:
+  ```bash
+  node --check service-worker.js
+  node --check popup/popup.js
+  ```

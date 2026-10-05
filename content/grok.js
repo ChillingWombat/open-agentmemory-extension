@@ -1,4 +1,4 @@
-// Open AgentMemory - Grok adapter
+// WebAI Memory - Grok adapter
 
 /* global OAM */
 

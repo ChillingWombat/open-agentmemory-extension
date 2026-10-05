@@ -1,9 +1,23 @@
 // =============================================================================
-// Open AgentMemory — Service Worker
-// Central message router between content scripts, popup, and the agentmemory API.
+// WebAI Memory — Service Worker
+// Central message router between content scripts, popup, and the memory backends.
+// Default engine: Local Mem0 (http://localhost:8000).
 // =============================================================================
 
+importScripts(
+  'backends/base-engine.js',
+  'backends/agentmemory-engine.js',
+  'backends/mem0-engine.js',
+  'backends/hindsight-engine.js',
+  'backends/cognee-engine.js',
+  'backends/engine-factory.js',
+  'backends/local-archive.js'
+);
+
 const DEFAULT_API_URL = 'http://localhost:3111';
+const DEFAULT_MEM0_API_URL = 'http://localhost:8000';
+const DEFAULT_HINDSIGHT_API_URL = 'http://localhost:8888';
+const DEFAULT_COGNEE_API_URL = 'http://localhost:8000';
 let _isConnected = false;
 
 // ---------------------------------------------------------------------------
@@ -12,16 +26,34 @@ let _isConnected = false;
 
 async function getSettings() {
   const defaults = {
+    activeEngine: 'mem0',
+    mem0ApiUrl: DEFAULT_MEM0_API_URL,
+    mem0ApiKey: '',
+    mem0UserId: 'default_user',
+    mem0OrgId: '',
+    mem0ProjectId: '',
     apiUrl: DEFAULT_API_URL,
     secret: '',
+    hindsightApiUrl: DEFAULT_HINDSIGHT_API_URL,
+    hindsightApiKey: '',
+    hindsightBankId: 'default',
+    cogneeApiUrl: DEFAULT_COGNEE_API_URL,
+    cogneeApiKey: '',
+    cogneeDatasetName: 'main',
     geminiAutoSave: true,
     chatgptAutoSave: true,
     claudeAutoSave: true,
     grokAutoSave: true,
+    aistudioAutoSave: true,
+    localArchiveEnabled: true,
     showNotifications: false,
   };
   const stored = await chrome.storage.local.get(Object.keys(defaults));
   return { ...defaults, ...stored };
+}
+
+function getActiveEngine(settings) {
+  return EngineFactory.createEngine(settings);
 }
 
 function normalizeApiUrl(value) {
@@ -43,29 +75,11 @@ function authHeaders(secret) {
 
 async function apiRequest(endpoint, { method = 'POST', body, timeout = 10000 } = {}) {
   const settings = await getSettings();
-  let apiUrl;
-
-  try {
-    apiUrl = normalizeApiUrl(settings.apiUrl);
-  } catch (err) {
-    return { error: err.message };
+  const engine = getActiveEngine(settings);
+  if (typeof engine._request === 'function') {
+    return engine._request(endpoint, { method, body, timeout });
   }
-
-  try {
-    const res = await fetch(`${apiUrl}/agentmemory/${endpoint}`, {
-      method,
-      headers: authHeaders(settings.secret),
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(timeout),
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return { error: payload.error || `AgentMemory returned HTTP ${res.status}`, status: res.status };
-    }
-    return payload;
-  } catch (err) {
-    return { error: err.message };
-  }
+  return { error: 'Direct apiRequest not supported by active engine' };
 }
 
 async function apiPost(endpoint, body) {
@@ -82,11 +96,13 @@ async function getQueueCount() {
 // ---------------------------------------------------------------------------
 
 async function updateBadge() {
+  const settings = await getSettings();
+  const engine = getActiveEngine(settings);
   const [health, badgeCount] = await Promise.all([
-    apiRequest('health', { method: 'GET', timeout: 3000 }),
+    engine.checkHealth().catch((err) => ({ connected: false, error: err.message })),
     getQueueCount(),
   ]);
-  _isConnected = !health.error;
+  _isConnected = !!health.connected;
 
   if (!_isConnected) {
     chrome.action.setBadgeText({ text: '!' });
@@ -117,14 +133,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (platform === 'chatgpt' && !settings.chatgptAutoSave) { sendResponse({ skipped: true }); return; }
           if (platform === 'claude' && !settings.claudeAutoSave) { sendResponse({ skipped: true }); return; }
           if (platform === 'grok' && !settings.grokAutoSave) { sendResponse({ skipped: true }); return; }
+          if (platform === 'aistudio' && !settings.aistudioAutoSave) { sendResponse({ skipped: true }); return; }
 
-          const result = await apiPost('observe', {
-            hookType: 'prompt_submit',
-            sessionId: message.sessionId || `web_${platform}_${Date.now().toString(36)}`,
-            project: `${platform}-web`,
-            cwd: `browser:${platform}`,
-            timestamp: new Date().toISOString(),
-            data: { prompt: message.content },
+          // Client-side zero-retention conversation archiving
+          if (settings.localArchiveEnabled !== false) {
+          try {
+            if (typeof LocalArchive !== 'undefined' && typeof LocalArchive.saveTurn === 'function') {
+              await LocalArchive.saveTurn({
+                platform,
+                sessionId: message.sessionId,
+                content: message.content,
+                userPrompt: message.userPrompt,
+                assistantResponse: message.assistantResponse,
+                timestamp: message.timestamp || new Date().toISOString(),
+              });
+            }
+          } catch (archiveErr) {
+            console.warn('LocalArchive.saveTurn failed:', archiveErr);
+          }
+          }
+
+          const engine = getActiveEngine(settings);
+          const result = await engine.observe({
+            platform,
+            sessionId: message.sessionId,
+            content: message.content,
+            userPrompt: message.userPrompt,
+            assistantResponse: message.assistantResponse,
+            timestamp: message.timestamp || new Date().toISOString(),
           });
           sendResponse({ ...result, showToast: settings.showNotifications });
           return;
@@ -132,9 +168,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // -- Search: recall relevant memories --
         case 'SEARCH': {
-          const result = await apiPost('search', {
-            query: message.query,
-            limit: message.limit || 3,
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings);
+          const result = await engine.search({
+            query: message.query !== undefined ? message.query : '',
+            limit: message.limit || (settings.activeEngine === 'agentmemory' ? 3 : 5),
           });
           sendResponse(result);
           return;
@@ -142,17 +180,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // -- Session lifecycle --
         case 'SESSION_START': {
-          const result = await apiPost('session/start', {
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings);
+          const result = await engine.startSession({
             sessionId: message.sessionId,
-            project: message.project || `${message.platform}-web`,
-            cwd: `browser:${message.platform || 'unknown'}`,
+            platform: message.platform,
+            project: message.project,
           });
           sendResponse(result);
           return;
         }
 
         case 'SESSION_END': {
-          const result = await apiPost('session/end', { sessionId: message.sessionId });
+          const settings = await getSettings();
+          const engine = getActiveEngine(settings);
+          const result = await engine.endSession({
+            sessionId: message.sessionId,
+          });
           sendResponse(result);
           return;
         }
@@ -160,10 +204,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // -- Status: health check for popup --
         case 'STATUS': {
           const settings = await getSettings();
-          const health = await apiRequest('health', { method: 'GET', timeout: 3000 });
+          const engine = getActiveEngine(settings);
+          const health = await engine.checkHealth();
+          _isConnected = !health.error && !!health.connected;
+          let activeUrl = engine.apiUrl || settings.mem0ApiUrl;
+          if (settings.activeEngine === 'agentmemory') activeUrl = engine.apiUrl || settings.apiUrl;
+          else if (settings.activeEngine === 'hindsight') activeUrl = engine.apiUrl || settings.hindsightApiUrl;
+          else if (settings.activeEngine === 'cognee') activeUrl = engine.apiUrl || settings.cogneeApiUrl;
+          const dashboardUrl = typeof engine.getDashboardUrl === 'function' ? engine.getDashboardUrl() : activeUrl;
+
           sendResponse({
-            connected: !health.error,
-            apiUrl: settings.apiUrl,
+            connected: _isConnected,
+            activeEngine: settings.activeEngine || 'mem0',
+            apiUrl: activeUrl,
+            dashboardUrl,
             version: health.version,
             error: health.error,
           });
@@ -185,16 +239,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             'chatgptAutoSave',
             'claudeAutoSave',
             'grokAutoSave',
+            'aistudioAutoSave',
+            'localArchiveEnabled',
             'showNotifications',
           ];
 
+          if ('activeEngine' in incoming) {
+            const val = String(incoming.activeEngine || '').trim().toLowerCase();
+            if (['mem0', 'agentmemory', 'hindsight', 'cognee'].includes(val)) {
+              next.activeEngine = val;
+            }
+          }
           if ('apiUrl' in incoming) next.apiUrl = normalizeApiUrl(incoming.apiUrl);
           if ('secret' in incoming) next.secret = String(incoming.secret || '').trim();
+          if ('mem0ApiUrl' in incoming) {
+            const raw = String(incoming.mem0ApiUrl || '').trim();
+            const url = new URL(raw);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+              throw new Error('Mem0 URL must use http:// or https://');
+            }
+            next.mem0ApiUrl = raw.replace(/\/+$/, '');
+          }
+          if ('mem0ApiKey' in incoming) next.mem0ApiKey = String(incoming.mem0ApiKey || '').trim();
+          if ('mem0UserId' in incoming) next.mem0UserId = String(incoming.mem0UserId || '').trim();
+          if ('mem0OrgId' in incoming) next.mem0OrgId = String(incoming.mem0OrgId || '').trim();
+          if ('mem0ProjectId' in incoming) next.mem0ProjectId = String(incoming.mem0ProjectId || '').trim();
+
+          if ('hindsightApiUrl' in incoming) {
+            const raw = String(incoming.hindsightApiUrl || '').trim();
+            const url = new URL(raw);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+              throw new Error('Hindsight URL must use http:// or https://');
+            }
+            next.hindsightApiUrl = raw.replace(/\/+$/, '');
+          }
+          if ('hindsightApiKey' in incoming) next.hindsightApiKey = String(incoming.hindsightApiKey || '').trim();
+          if ('hindsightBankId' in incoming) next.hindsightBankId = String(incoming.hindsightBankId || '').trim();
+
+          if ('cogneeApiUrl' in incoming) {
+            const raw = String(incoming.cogneeApiUrl || '').trim();
+            const url = new URL(raw);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+              throw new Error('Cognee URL must use http:// or https://');
+            }
+            next.cogneeApiUrl = raw.replace(/\/+$/, '');
+          }
+          if ('cogneeApiKey' in incoming) next.cogneeApiKey = String(incoming.cogneeApiKey || '').trim();
+          if ('cogneeDatasetName' in incoming) next.cogneeDatasetName = String(incoming.cogneeDatasetName || '').trim();
+
           for (const key of booleanKeys) {
             if (key in incoming) next[key] = incoming[key] === true;
           }
 
           await chrome.storage.local.set(next);
+          await updateBadge();
           sendResponse({ ok: true, settings: next });
           return;
         }
@@ -212,6 +310,66 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await chrome.storage.session.remove('oamQueueCount');
           await updateBadge();
           sendResponse({ ok: true });
+          return;
+        }
+
+        // -- Local Archive Operations --
+        case 'GET_LOCAL_SESSIONS': {
+          if (typeof LocalArchive !== 'undefined' && typeof LocalArchive.getSessions === 'function') {
+            const sessions = await LocalArchive.getSessions({
+              platform: message.platform,
+              query: message.query,
+              limit: message.limit,
+              offset: message.offset,
+            });
+            sendResponse({ sessions });
+          } else {
+            sendResponse({ sessions: [] });
+          }
+          return;
+        }
+
+        case 'GET_LOCAL_SESSION_DETAILS': {
+          if (typeof LocalArchive !== 'undefined' && typeof LocalArchive.getSessionDetails === 'function') {
+            const details = await LocalArchive.getSessionDetails(message.sessionId);
+            sendResponse(details || { session: null, turns: [] });
+          } else {
+            sendResponse({ session: null, turns: [] });
+          }
+          return;
+        }
+
+        case 'DELETE_LOCAL_SESSION': {
+          if (typeof LocalArchive !== 'undefined' && typeof LocalArchive.deleteSession === 'function') {
+            const result = await LocalArchive.deleteSession(message.sessionId);
+            sendResponse(result);
+          } else {
+            sendResponse({ success: false, error: 'LocalArchive not available' });
+          }
+          return;
+        }
+
+        case 'CLEAR_LOCAL_HISTORY': {
+          if (typeof LocalArchive !== 'undefined' && typeof LocalArchive.clearHistory === 'function') {
+            const result = await LocalArchive.clearHistory({ platform: message.platform });
+            sendResponse(result);
+          } else {
+            sendResponse({ success: false, error: 'LocalArchive not available' });
+          }
+          return;
+        }
+
+        case 'EXPORT_LOCAL_HISTORY': {
+          if (typeof LocalArchive !== 'undefined' && typeof LocalArchive.exportHistory === 'function') {
+            const result = await LocalArchive.exportHistory({
+              format: message.format || 'json',
+              platform: message.platform,
+              sessionId: message.sessionId,
+            });
+            sendResponse(result);
+          } else {
+            sendResponse({ error: 'LocalArchive not available' });
+          }
           return;
         }
 

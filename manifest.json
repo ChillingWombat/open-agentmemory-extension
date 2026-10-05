@@ -1,22 +1,28 @@
 {
   "manifest_version": 3,
-  "name": "Open AgentMemory",
+  "name": "WebAI Memory",
   "version": "0.1.0",
-  "description": "Connect ChatGPT, Claude, Gemini, and Grok to a local AgentMemory daemon for conversation capture and reusable context.",
+  "description": "Connect Gemini, Google AI Studio, ChatGPT, Claude, and Grok to Mem0, AgentMemory, Hindsight, and Cognee, with zero-retention local history archiving.",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "alarms"
   ],
   "host_permissions": [
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://api.mem0.ai/*",
+    "https://aistudio.google.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
   ],
   "background": {
     "service_worker": "service-worker.js"
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Open AgentMemory",
+    "default_title": "WebAI Memory",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
@@ -62,6 +68,16 @@
       "js": [
         "content/shared.js",
         "content/grok.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://aistudio.google.com/*"
+      ],
+      "js": [
+        "content/shared.js",
+        "content/aistudio.js"
       ],
       "run_at": "document_idle"
     }

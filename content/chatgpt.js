@@ -1,4 +1,4 @@
-// Open AgentMemory - ChatGPT adapter
+// WebAI Memory - ChatGPT adapter
 
 /* global OAM */
 

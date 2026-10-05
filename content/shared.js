@@ -1,5 +1,5 @@
 // =============================================================================
-// Open AgentMemory — Shared Content Script Utilities
+// WebAI Memory — Shared Content Script Utilities
 // =============================================================================
 
 /* global chrome */
@@ -119,6 +119,9 @@ const OAM = (() => {
     if (!fullContext) return;
 
     if (inputEl.tagName === 'TEXTAREA') {
+      if (typeof inputEl.focus === 'function') {
+        inputEl.focus();
+      }
       const nativeSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
       if (nativeSetter && nativeSetter.set) {
         nativeSetter.set.call(inputEl, fullContext + inputEl.value);
@@ -126,6 +129,15 @@ const OAM = (() => {
         inputEl.value = fullContext + inputEl.value;
       }
       inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+      if (typeof InputEvent !== 'undefined') {
+        try {
+          inputEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: fullContext }));
+        } catch {
+          // InputEvent construction fallback for mock or unsupported DOM environments
+        }
+      }
+      inputEl.dispatchEvent(new Event('resize', { bubbles: true }));
 
     } else if (inputEl.isContentEditable || inputEl.classList.contains('ProseMirror')) {
       inputEl.focus();
@@ -295,7 +307,9 @@ const OAM = (() => {
       if (input && !input.dataset.oamHooked) {
         input.dataset.oamHooked = 'true';
         input.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          const isSubmitKey = (event.key === 'Enter' && !event.shiftKey && !event.isComposing) ||
+                              (event.key === 'Enter' && (event.ctrlKey || event.metaKey));
+          if (isSubmitKey) {
             prependQueuedContext();
           }
         }, { capture: true });

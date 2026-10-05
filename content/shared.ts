@@ -95,9 +95,11 @@ const OAM = (() => {
       boxShadow: '0 4px 16px rgba(0,0,0,0.4)', cursor: 'default', userSelect: 'none',
     });
     banner.innerHTML = `
-      <span style="font-size:14px">📎</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8ab4f8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
       <span><strong>${lines} line${lines === 1 ? '' : 's'}</strong> of memory queued for next prompt</span>
-      <span id="oam-banner-close" style="margin-left:6px;color:#7D7D7D;font-size:14px;line-height:1">×</span>
+      <span id="oam-banner-close" style="margin-left:6px;color:#9aa0a6;cursor:pointer;display:inline-flex;align-items:center;line-height:1">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </span>
     `;
     const closeBtn = banner.querySelector('#oam-banner-close');
     if (closeBtn) {
@@ -432,7 +434,7 @@ const OAM = (() => {
 
     if (result && !result.error && !result.skipped && result.showToast) {
       _observedMessages.add(fingerprint);
-      showToast('💾 Saved to memory');
+      showToast('Saved to memory');
     } else if (result && !result.error) {
       _observedMessages.add(fingerprint);
     }
@@ -547,7 +549,7 @@ const OAM = (() => {
 
         prependContextToInput(currentInput, queued);
         clearQueuedContext();
-        showToast('📎 Memory context sent with prompt');
+        showToast('Memory context sent with prompt');
       }
 
       if (button && !button.dataset.oamHooked) {

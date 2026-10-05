@@ -108,6 +108,12 @@ function triggerDownload(dataString, filename = 'webai-memory-export.json') {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// ── Clean Google Material Design SVG Icons (No Emojis / Raster Symbols) ───────
+const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+const ICON_EDIT = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+const ICON_DELETE = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
+const ICON_COPY = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+const ICON_PIN = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>`;
 // ── Controller Initialization ─────────────────────────────────────────────────
 async function initPopup() {
     if (typeof document === 'undefined')
@@ -236,12 +242,12 @@ async function initPopup() {
         copyCmdBtn.addEventListener('click', async () => {
             try {
                 await navigator.clipboard.writeText('agentmemory');
-                copyCmdBtn.textContent = '✓';
+                copyCmdBtn.innerHTML = ICON_CHECK;
             }
             catch {
                 copyCmdBtn.textContent = '!';
             }
-            setTimeout(() => { copyCmdBtn.textContent = '📋'; }, 2000);
+            setTimeout(() => { copyCmdBtn.innerHTML = ICON_COPY; }, 2000);
         });
     }
     async function checkStatus() {
@@ -541,7 +547,7 @@ async function initPopup() {
             saveSettingsBtn.textContent = 'Testing…';
             const status = await checkStatus();
             if (status && status.connected) {
-                saveSettingsBtn.textContent = 'Saved ✓';
+                saveSettingsBtn.textContent = 'Saved';
                 saveSettingsBtn.classList.add('saved');
                 if (settingsFeedback) {
                     let engineTitle = 'Mem0';
@@ -681,7 +687,7 @@ async function initPopup() {
           <span class="platform-badge platform-${esc(platform)}">${esc(platformLabel)}</span>
           <span class="session-time">${esc(timeStr)}</span>
         </div>
-        <button class="btn-delete-session" title="Delete conversation" aria-label="Delete conversation">🗑️</button>
+        <button class="btn-delete-session" title="Delete conversation" aria-label="Delete conversation">${ICON_DELETE}</button>
       </div>
       <div class="session-title">${esc(title)}</div>
       ${snippet ? `<div class="session-snippet">${esc(snippet)}</div>` : ''}
@@ -885,14 +891,14 @@ async function initPopup() {
         if (count === 0) {
             attachBar.classList.add('hidden');
             state.attachQueued = false;
-            attachBtn.textContent = '📎 Queue for next prompt';
+            attachBtn.innerHTML = `${ICON_PIN} <span>Queue for next prompt</span>`;
             attachBtn.classList.remove('queued');
         }
         else {
             attachBar.classList.remove('hidden');
             attachCount.textContent = `${count} selected`;
             if (!state.attachQueued) {
-                attachBtn.textContent = '📎 Queue for next prompt';
+                attachBtn.innerHTML = `${ICON_PIN} <span>Queue for next prompt</span>`;
                 attachBtn.classList.remove('queued');
             }
         }
@@ -911,7 +917,7 @@ async function initPopup() {
         if (state.attachQueued) {
             state.attachQueued = false;
             if (attachBtn) {
-                attachBtn.textContent = '📎 Queue for next prompt';
+                attachBtn.innerHTML = `${ICON_PIN} <span>Queue for next prompt</span>`;
                 attachBtn.classList.remove('queued');
             }
         }
@@ -951,7 +957,7 @@ async function initPopup() {
             await msg({ type: 'SET_QUEUE_COUNT', count: state.selectedMemories.size });
             state.queuedCount = state.selectedMemories.size;
             state.attachQueued = true;
-            attachBtn.textContent = `✓ ${state.selectedMemories.size} memor${state.selectedMemories.size === 1 ? 'y' : 'ies'} queued — send your prompt`;
+            attachBtn.innerHTML = `${ICON_CHECK} <span>${state.selectedMemories.size} memor${state.selectedMemories.size === 1 ? 'y' : 'ies'} queued</span>`;
             attachBtn.classList.add('queued');
             updateQueueBanner(contextText.trim());
         });
@@ -1147,9 +1153,23 @@ async function initPopup() {
     function buildMemoryCard(item) {
         const obs = item.observation || item;
         const id = stableId(obs);
-        const title = obs.title || obs.subtitle || 'Memory';
+        // Clean, informative title resolution:
+        // If backend returns 'global', 'default', 'untitled', or empty, derive from first line of narrative.
+        let title = (obs.title || obs.subtitle || '').trim();
+        const rawNarrative = (obs.narrative || (Array.isArray(obs.facts) ? obs.facts.join('. ') : '') || '').trim();
+        if (!title || title.toLowerCase() === 'global' || title.toLowerCase() === 'default' || title.toLowerCase() === 'untitled' || title.toLowerCase() === 'memory') {
+            if (rawNarrative) {
+                const firstLine = rawNarrative.split(/[\r\n]+/)[0].trim();
+                title = firstLine.length > 52 ? firstLine.slice(0, 50).trim() + '…' : firstLine;
+            }
+            if (!title)
+                title = 'Memory';
+        }
         const snippet = obs.narrative || (obs.facts || []).slice(0, 2).join('. ') || '';
-        const meta = obs.sessionId || '';
+        let meta = (obs.sessionId || '').trim();
+        if (meta.toLowerCase() === 'global' || meta.toLowerCase() === 'default') {
+            meta = '';
+        }
         const card = document.createElement('div');
         card.className = 'result-card';
         card.tabIndex = 0;
@@ -1159,7 +1179,7 @@ async function initPopup() {
         cardHeader.className = 'result-card-header';
         const cardCheck = document.createElement('div');
         cardCheck.className = 'card-check';
-        cardCheck.textContent = '✓';
+        cardCheck.innerHTML = ICON_CHECK;
         cardHeader.appendChild(cardCheck);
         const cardActions = document.createElement('div');
         cardActions.className = 'card-actions';
@@ -1168,13 +1188,13 @@ async function initPopup() {
         editBtn.type = 'button';
         editBtn.title = 'Edit memory';
         editBtn.setAttribute('aria-label', 'Edit memory');
-        editBtn.textContent = '✎';
+        editBtn.innerHTML = ICON_EDIT;
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'card-action-btn btn-delete-memory';
         deleteBtn.type = 'button';
         deleteBtn.title = 'Delete memory';
         deleteBtn.setAttribute('aria-label', 'Delete memory');
-        deleteBtn.textContent = '🗑️';
+        deleteBtn.innerHTML = ICON_DELETE;
         cardActions.appendChild(editBtn);
         cardActions.appendChild(deleteBtn);
         cardHeader.appendChild(cardActions);

@@ -98,10 +98,7 @@ body {
 }
 
 .subtitle {
-  margin-top: 3px;
-  font-size: 11px;
-  color: #5f6368;
-  font-family: inherit;
+  display: none !important;
 }
 
 /* ── Status Badge (Google Pill) ────────────────────────────────────────────── */
@@ -370,16 +367,9 @@ body {
 
 .filter-pills {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 4px 16px 8px;
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-
-.filter-pills::-webkit-scrollbar {
-  display: none;
 }
 
 .pill {

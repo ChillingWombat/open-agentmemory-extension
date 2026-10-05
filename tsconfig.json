@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "moduleDetection": "legacy",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["chrome", "node"]
+  },
+  "include": [
+    "types/**/*.ts",
+    "backends/**/*.ts",
+    "content/**/*.ts",
+    "popup/**/*.ts",
+    "service-worker.ts"
+  ]
+}

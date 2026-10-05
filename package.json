@@ -3,8 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build": "tsc && node scripts/post-build.js",
+    "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.js",
     "test:worker": "node test/service-worker.test.js",
     "test:e2e": "node test/e2e-suite.test.js"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.4",
+    "@types/node": "^22.13.10",
+    "typescript": "^7.0.2"
   }
 }

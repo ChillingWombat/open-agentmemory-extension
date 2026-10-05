@@ -105,14 +105,49 @@ async function updateBadge() {
   _isConnected = !!health.connected;
 
   if (!_isConnected) {
+    if (chrome.action?.setIcon) {
+      try {
+        chrome.action.setIcon({
+          path: {
+            16: 'icons/icon-16.png',
+            48: 'icons/icon-48.png',
+            128: 'icons/icon-128.png',
+          },
+        });
+      } catch (_) {}
+    }
     chrome.action.setBadgeText({ text: '!' });
     chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
   } else if (badgeCount > 0) {
+    if (chrome.action?.setIcon) {
+      try {
+        chrome.action.setIcon({
+          path: {
+            16: 'icons/icon-16.png',
+            48: 'icons/icon-48.png',
+            128: 'icons/icon-128.png',
+          },
+        });
+      } catch (_) {}
+    }
     chrome.action.setBadgeText({ text: String(badgeCount) });
     chrome.action.setBadgeBackgroundColor({ color: '#6366f1' }); // Indigo for queued items
   } else {
-    chrome.action.setBadgeText({ text: '✓' });
-    chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
+    // In Chromium, non-empty badge text renders a huge ~12px native block covering the 16px toolbar icon.
+    // Setting text to '' removes the giant native overlay, while the connected icon displays
+    // a crisp, miniature status indicator.
+    if (chrome.action?.setIcon) {
+      try {
+        chrome.action.setIcon({
+          path: {
+            16: 'icons/icon-connected-16.png',
+            48: 'icons/icon-connected-48.png',
+            128: 'icons/icon-connected-128.png',
+          },
+        });
+      } catch (_) {}
+    }
+    chrome.action.setBadgeText({ text: '' });
   }
 }
 

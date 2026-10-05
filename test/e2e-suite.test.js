@@ -92,6 +92,7 @@ function createServiceWorkerHarness(initialSettings = {}, customFetch = null) {
     action: {
       setBadgeText({ text }) { badge.text = text; },
       setBadgeBackgroundColor({ color }) { badge.color = color; },
+      setIcon({ path }) { badge.icon = path; },
     },
     alarms: {
       create() {},
@@ -1360,7 +1361,8 @@ test('Tier 1 - F13.5: Popup queue management synchronizes badge and session coun
   assert.equal(harness.badge.text, '4');
 
   await harness.send({ type: 'CONTEXT_SENT' });
-  assert.equal(harness.badge.text, '✓');
+  assert.equal(harness.badge.text, '');
+  assert.equal(harness.badge.icon?.['128'], 'icons/icon-connected-128.png');
 });
 
 test('Tier 1 - F13.6: Popup file assets exist and are syntactically valid', () => {
@@ -2377,7 +2379,8 @@ test('Tier 4 - Scenario 4: Memory recall, context queuing, badge update, and AI 
   const sentRes = await harness.send({ type: 'CONTEXT_SENT' });
   assert.equal(sentRes.ok, true);
   assert.equal(harness.sessionStore._raw.oamQueueCount, undefined);
-  assert.equal(harness.badge.text, '✓');
+  assert.equal(harness.badge.text, '');
+  assert.equal(harness.badge.icon?.['128'], 'icons/icon-connected-128.png');
 });
 
 test('Tier 4 - Scenario 5: Multi-session archival, cross-platform transcript search, export, and platform purge', async () => {

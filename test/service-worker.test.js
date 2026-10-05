@@ -38,6 +38,7 @@ function createHarness(options = {}) {
     action: {
       setBadgeText({ text }) { badge.text = text; },
       setBadgeBackgroundColor({ color }) { badge.color = color; },
+      setIcon({ path }) { badge.icon = path; },
     },
     alarms: {
       create() {},
@@ -259,6 +260,16 @@ test('persists queue count for badge updates', async () => {
   assert.equal(result.ok, true);
   assert.equal(harness.session.oamQueueCount, 3);
   assert.equal(harness.badge.text, '3');
+});
+
+test('clears badge text and switches to connected icon when connected and idle', async () => {
+  const harness = createHarness();
+  const result = await harness.send({ type: 'CONTEXT_SENT' });
+
+  assert.equal(result.ok, true);
+  assert.equal(harness.session.oamQueueCount, undefined);
+  assert.equal(harness.badge.text, '');
+  assert.equal(harness.badge.icon?.['128'], 'icons/icon-connected-128.png');
 });
 
 // ---------------------------------------------------------------------------

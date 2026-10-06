@@ -6,7 +6,7 @@ WebAI Memory is a zero-dependency Manifest V3 Chromium browser extension providi
 ### High-Level Components
 1. **Background Service Worker (`service-worker.js`)**:
    - Central message router (`OBSERVE`, `SEARCH`, `STATUS`, `SESSION_START`, `SESSION_END`, `GET_SETTINGS`, `SET_SETTINGS`, `ARCHIVE_*`, `SET_QUEUE_COUNT`, `CONTEXT_SENT`).
-   - Delegates memory backend operations via `EngineFactory` to pluggable `BaseMemoryEngine` implementations (`AgentMemoryEngine`, `Mem0Engine`).
+   - Delegates memory backend operations via `EngineFactory` to pluggable `BaseMemoryEngine` implementations (`Mem0Engine`, `AgentMemoryEngine`, `HindsightEngine`, `CogneeEngine`).
    - Delegates client-side zero-retention chat logging to `LocalArchive`.
    - Manages extension badge, alarms (`statusCheck`), and settings persistence in `chrome.storage.local`.
 2. **Pluggable Memory Backends (`backends/`)**:
@@ -137,14 +137,16 @@ class LocalArchive {
 
 ## Code Layout
 ```text
-/mnt/Data/Projects/OpenAgentMemory/
+/mnt/Data/Projects/WebAIMemory/
 ├── manifest.json
 ├── package.json
 ├── service-worker.js
 ├── backends/
 │   ├── base-engine.js
-│   ├── agentmemory-engine.js
 │   ├── mem0-engine.js
+│   ├── agentmemory-engine.js
+│   ├── hindsight-engine.js
+│   ├── cognee-engine.js
 │   ├── engine-factory.js
 │   └── local-archive.js
 ├── content/

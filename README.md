@@ -1,6 +1,6 @@
 # WebAI Memory
 
-A small browser extension that saves your chats from AI web interfaces—Gemini, Google AI Studio, ChatGPT, Claude, and Grok—and connects them to a memory engine like [Mem0](https://mem0.ai) or [AgentMemory](https://github.com/rohitg00/agentmemory).
+A browser extension that saves your chats from AI web interfaces—Gemini, Google AI Studio, ChatGPT, Claude, and Grok—and connects them to pluggable memory engines like [Mem0](https://mem0.ai), [AgentMemory](https://github.com/rohitg00/agentmemory), [Hindsight](https://github.com/vector-database/hindsight), and [Cognee](https://github.com/topoteretes/cognee), or safely preserves them client-side in a zero-retention local archive.
 
 ### Why use this?
 
@@ -8,14 +8,14 @@ If you turn off history or activity tracking on services like Gemini (for exampl
 
 This extension keeps a copy saved locally on your own machine. You get the privacy benefits of turning off cloud history without losing track of your conversations.
 
-If you also run a memory engine (Mem0 or AgentMemory), it sends the dialogue turns there too, so you can search past memories and inject them into future prompts.
+If you also configure a memory engine (such as Local Mem0, Mem0 Cloud, AgentMemory, Hindsight, or Cognee), it sends the dialogue turns there too, so you can search past memories and inject them into future prompts.
 
 ---
 
 ## What it does
 
 - **Keeps a local history**: Saves your chats in your browser (`chrome.storage.local`). You can read past sessions, search transcripts, and export them to Markdown or JSON anytime.
-- **Works with memory engines**: Supports **Mem0** (cloud or self-hosted) and local **AgentMemory** daemons.
+- **Works with memory engines**: Pluggable support for **Local Mem0** (default), **Mem0 Cloud**, **AgentMemory**, **Hindsight**, **Cognee**, or standalone **Local Archive Only**.
 - **Supports popular AI chats**:
   - Google Gemini (`gemini.google.com`)
   - Google AI Studio (`aistudio.google.com`)
@@ -31,7 +31,7 @@ If you also run a memory engine (Mem0 or AgentMemory), it sends the dialogue tur
 
 ### 1. Load the extension in your browser
 
-1. Clone or download this repo.
+1. Clone or download this repo (`git clone https://github.com/ChillingWombat/webai-memory.git`).
 2. Open `chrome://extensions` in Chrome, Brave, Edge, or any Chromium browser.
 3. Turn on **Developer mode** (top right switch).
 4. Click **Load unpacked** and select this project folder.
@@ -71,7 +71,7 @@ Click **Save & Test Connection** to verify.
 ## Privacy
 
 - Your conversation archive stays in your browser's local storage.
-- If you use AgentMemory, network calls only go to your local machine (`localhost` / `127.0.0.1`).
+- If you use a local engine (Local Mem0, AgentMemory, Hindsight, or Cognee), network calls only go to your local machine (`localhost` / `127.0.0.1`).
 - If you use Mem0 Cloud, memories are sent to `api.mem0.ai` using your own API key.
 - The extension does not collect analytics or route your data through any third-party relay.
 
